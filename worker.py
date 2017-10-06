@@ -429,7 +429,7 @@ def run(task_id, task_args):
                     prog_cmd,
                     stdout=stdout,
                     stderr=stderr,
-                    env=os.environ,
+                    # env=os.environ,
                     # cwd=join(run_dir, 'program')
                 )
 
