@@ -10,7 +10,7 @@ mkdir -p /tmp/codalab && docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /tmp/codalab:/tmp/codalab \
     --env BROKER_URL=<queue broker url> \
-    competitions-v1-compute-worker
+    ckcollab/competitions-v1-compute-worker:latest
 ```
 
 
@@ -25,7 +25,7 @@ docker run \
     --env-file .env \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v <SUBMISSION TEMP DIRECTORY>:<SUBMISSION TEMP DIRECTORY> \
-    competitions-v1-compute-worker
+    ckcollab/competitions-v1-compute-worker:latest
 ```
 
 
@@ -36,4 +36,11 @@ To re-build the image:
 
 ```
 docker build -t competitions-v1-compute-worker .
+```
+
+Updating the image
+
+```
+docker build -t ckcollab/competitions-v1-compute-worker:latest .
+docker push ckcollab/competitions-v1-compute-worker
 ```

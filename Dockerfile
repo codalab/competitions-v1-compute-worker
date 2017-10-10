@@ -1,4 +1,4 @@
-FROM python:2.7-jessie
+FROM python:2.7
 
 # Install docker 17.06.00
 RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=17.06.0~ce-0~debian/' | sh
