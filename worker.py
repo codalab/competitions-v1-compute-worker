@@ -19,6 +19,7 @@ import requests
 import yaml
 
 from os.path import join, exists
+from glob import glob
 from subprocess import Popen, call
 from zipfile import ZipFile
 
@@ -111,6 +112,12 @@ def get_bundle(root_dir, relative_dir, url):
             # Delete old dir, move copied data back
             shutil.rmtree(bundle_path, ignore_errors=True)
             shutil.move(temp_folder_name, bundle_path)
+
+        # any zips we see should be unzipped to a folder with the name of the file
+        for zip_file in glob(join(bundle_path, "*.zip")):
+            name_without_extension = os.path.splitext(zip_file)[0]
+            with ZipFile(join(bundle_path, zip_file), 'r') as z:
+                z.extractall(join(bundle_path, name_without_extension))
     else:
         # Otherwise we have some metadata type file, like run.txt containing other bundles to fetch.
         os.mkdir(bundle_path)
