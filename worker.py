@@ -368,10 +368,12 @@ def run(task_id, task_args):
                 # just be results..
                 submission_path = join(run_dir, "program")
                 metadata_path = join(submission_path, "metadata")
-                is_code_submission = False
-                if exists(metadata_path):
-                    submission_metadata = yaml.load(open(metadata_path).read())
-                    is_code_submission = "command" in submission_metadata.keys()
+
+                # If a metadata file is found, assume this is a code submission
+                is_code_submission = exists(metadata_path)
+                # if exists(metadata_path):
+                #     submission_metadata = yaml.load(open(metadata_path).read())
+                #     is_code_submission = "command" in submission_metadata.keys()
 
                 if is_code_submission:
                     logger.info("We have a code submission!")
@@ -462,7 +464,9 @@ def run(task_id, task_args):
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
                     '-v', '{0}:{0}'.format(hidden_ref_dir),
-                    # Set current working directory
+                    # Add the participants submission dir to PYTHONPATH
+                    '-e', 'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
+                    # Set current working directory to submission dir
                     '-w', run_dir,
                     # Set the right image
                     ingestion_program_docker_image,
@@ -523,6 +527,9 @@ def run(task_id, task_args):
                     logger.info("Exit Code ingestion process: %d", ingestion_program_exit_code)
             else:
                 exit_code = 0  # let code down below know everything went OK
+
+            if not evaluator_process:
+                exit_code = 0  # Set exit code to 0 so task is marked as finished
 
             endTime = time.time()
             elapsedTime = endTime - startTime
