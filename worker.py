@@ -601,6 +601,10 @@ def run(task_id, task_args):
                         put_blob(detailed_results_url, file_to_upload)
                         html_found = True
 
+        if os.environ.get("DONT_FINALIZE_SUBMISSION"):
+            logger.info("NOT FINALIZING SUBMISSION!")
+            return
+
         # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
         debug_metadata["end_swap_memory_usage"] = json.dumps(psutil.swap_memory()._asdict())
@@ -628,6 +632,10 @@ def run(task_id, task_args):
             debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
             debug_metadata["end_swap_memory_usage"] = json.dumps(psutil.swap_memory()._asdict())
             debug_metadata["end_cpu_usage"] = psutil.cpu_percent(interval=None)
+
+        if os.environ.get("DONT_FINALIZE_SUBMISSION"):
+            logger.info("NOT FINALIZING SUBMISSION!")
+            return
 
         logger.exception("Run task failed (task_id=%s).", task_id)
         _send_update(task_id, 'failed', secret, extra={

@@ -12,6 +12,7 @@ mkdir -p /tmp/codalab && docker run \
     -d \
     --name compute_worker \
     --env BROKER_URL=<queue broker url> \
+    --restart unless-stopped \
     ckcollab/competitions-v1-compute-worker:latest
 ```
 
@@ -27,8 +28,9 @@ docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v <SUBMISSION TEMP DIRECTORY>:<SUBMISSION TEMP DIRECTORY> \
     -d \
-    --env-file .env \
     --name compute_worker \
+    --env-file .env \
+    --restart unless-stopped \
     ckcollab/competitions-v1-compute-worker:latest
 ```
 
@@ -60,3 +62,14 @@ Updating the image
 docker build -t ckcollab/competitions-v1-compute-worker:latest .
 docker push ckcollab/competitions-v1-compute-worker
 ```
+
+
+Special env flags
+=================
+
+
+### DONT_FINALIZE_SUBMISSION
+
+Sometimes it may be useful to pause the compute worker and return instead of finishing a submission. This leaves the
+submission in a state where it hasn't been cleaned up yet and you can attempt to re-run it manually.
+
