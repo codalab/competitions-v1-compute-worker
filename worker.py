@@ -123,11 +123,12 @@ def get_bundle(root_dir, relative_dir, url):
         os.mkdir(bundle_path)
         shutil.copyfile(bundle_file.name, metadata_path)
 
-    os.chmod(bundle_path, 0777)
+    os.chmod(bundle_path, 0o777)
 
     # Check for metadata containing more bundles to fetch
     metadata = None
     if os.path.exists(metadata_path):
+        logger.info("get_bundle :: Fetching extra files specified in metadata for {}".format(metadata_path))
         with open(metadata_path) as mf:
             metadata = yaml.load(mf)
 
@@ -230,6 +231,8 @@ def run(task_id, task_args):
     debug_metadata = {
         "hostname": socket.gethostname(),
 
+        "ingestion_program_duration": None,
+
         "processes_running_in_temp_dir": running_processes,
 
         "beginning_virtual_memory_usage": json.dumps(psutil.virtual_memory()._asdict()),
@@ -259,7 +262,7 @@ def run(task_id, task_args):
 
         # Create temporary directories for the run
         root_dir = tempfile.mkdtemp(dir=temp_dir)
-        os.chmod(root_dir, 0777)
+        os.chmod(root_dir, 0o777)
 
         run_dir = join(root_dir, 'run')
         shared_dir = tempfile.mkdtemp(dir=temp_dir)
@@ -289,7 +292,7 @@ def run(task_id, task_args):
         if input_rel_path not in bundles:
             if os.path.exists(input_dir) == False:
                 os.mkdir(input_dir)
-                os.chmod(input_dir, 0777)
+                os.chmod(input_dir, 0o777)
         # Verify we have a program
         prog_rel_path = 'program'
         if prog_rel_path not in bundles:
@@ -321,12 +324,12 @@ def run(task_id, task_args):
         output_dir = join(root_dir, 'run', 'output')
         if os.path.exists(output_dir) == False:
             os.mkdir(output_dir)
-            os.chmod(output_dir, 0777)
+            os.chmod(output_dir, 0o777)
         # Create temp folder
         temp_dir = join(root_dir, 'run', 'temp')
         if os.path.exists(temp_dir) == False:
             os.mkdir(temp_dir)
-            os.chmod(temp_dir, 0777)
+            os.chmod(temp_dir, 0o777)
         # Report the list of folders and files staged
         #
         # Invoke custom evaluation program
@@ -351,6 +354,8 @@ def run(task_id, task_args):
         ingestion_stderr_file = join(run_dir, 'ingestion_stderr_file.txt')
         ingestion_stdout = open(ingestion_stdout_file, "a+")
         ingestion_stderr = open(ingestion_stderr_file, "a+")
+        ingestion_program_start_time = None
+        ingestion_program_end_time = None
 
         run_ingestion_program = False
 
@@ -446,6 +451,8 @@ def run(task_id, task_args):
                 if 'command' not in ingestion_prog_info:
                     raise Exception("Ingestion program metadata was found, but is missing the 'command' attribute,"
                                     "which is necessary to execute the ingestion program.")
+                ingestion_program_start_time = time.time()
+
                 ingestion_prog_cmd = ingestion_prog_info['command']
 
                 # ingestion_run_dir = join(run_dir, 'ingestion')
@@ -532,6 +539,7 @@ def run(task_id, task_args):
                     logger.info("Exit Code regular process: %d", exit_code)
                 if ingestion_process:
                     logger.info("Exit Code ingestion process: %d", ingestion_program_exit_code)
+                    debug_metadata['ingestion_program_duration'] = time.time() - ingestion_program_start_time
             else:
                 exit_code = 0  # let code down below know everything went OK
 
@@ -597,7 +605,7 @@ def run(task_id, task_args):
                 for file in files:
                     file_to_upload = os.path.join(root,file)
                     file_ext = os.path.splitext(file_to_upload)[1]
-                    if file_ext.lower() ==".html":
+                    if file_ext.lower() == ".html":
                         put_blob(detailed_results_url, file_to_upload)
                         html_found = True
 
@@ -635,6 +643,7 @@ def run(task_id, task_args):
 
         if os.environ.get("DONT_FINALIZE_SUBMISSION"):
             logger.info("NOT FINALIZING SUBMISSION!")
+            logger.info(traceback.format_exc())
             return
 
         logger.exception("Run task failed (task_id=%s).", task_id)
