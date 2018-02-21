@@ -421,7 +421,7 @@ def run(task_id, task_args):
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                prog_cmd = prog_cmd.split(' ')
+                prog_cmd = ["PYTHONUNBUFFERED=1"] + prog_cmd.split(' ')
                 docker_cmd = [
                     'docker',
                     'run',
@@ -468,7 +468,7 @@ def run(task_id, task_args):
                     .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
+                ingestion_prog_cmd = ["PYTHONUNBUFFERED=1"] + ingestion_prog_cmd.split(' ')
                 ingestion_docker_cmd = [
                     'docker',
                     'run',

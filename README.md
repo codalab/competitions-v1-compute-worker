@@ -13,7 +13,7 @@ mkdir -p /tmp/codalab && docker run \
     --name compute_worker \
     --env BROKER_URL=<queue broker url> \
     --restart unless-stopped \
-    ckcollab/competitions-v1-compute-worker:latest
+    codalab/competitions-v1-compute-worker:latest
 ```
 
 
@@ -26,12 +26,12 @@ Make sure the temp directory you select is created and pass it in this command
 ```
 docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v <SUBMISSION TEMP DIRECTORY>:<SUBMISSION TEMP DIRECTORY> \
+    -v /tmp/codalab:/tmp/codalab \
     -d \
     --name compute_worker \
     --env-file .env \
     --restart unless-stopped \
-    ckcollab/competitions-v1-compute-worker:latest
+    codalab/competitions-v1-compute-worker:latest
 ```
 
 ### To get output of the worker
@@ -59,8 +59,8 @@ docker build -t competitions-v1-compute-worker .
 Updating the image
 
 ```
-docker build -t ckcollab/competitions-v1-compute-worker:latest .
-docker push ckcollab/competitions-v1-compute-worker
+docker build -t codalab/competitions-v1-compute-worker:latest .
+docker push codalab/competitions-v1-compute-worker
 ```
 
 
