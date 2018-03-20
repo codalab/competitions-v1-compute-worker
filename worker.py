@@ -421,7 +421,7 @@ def run(task_id, task_args):
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                prog_cmd = ["PYTHONUNBUFFERED=1"] + prog_cmd.split(' ')
+                prog_cmd = prog_cmd.split(' ')
                 docker_cmd = [
                     'docker',
                     'run',
@@ -430,6 +430,8 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
+                    # Don't buffer python output, so we don't lose any
+                    '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory
                     '-w', run_dir,
                     # Note that hidden data dir is excluded here!
@@ -480,6 +482,7 @@ def run(task_id, task_args):
                     '-v', '{0}:{0}'.format(hidden_ref_dir),
                     # Add the participants submission dir to PYTHONPATH
                     '-e', 'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
+                    '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory to submission dir
                     '-w', run_dir,
                     # Set the right image
@@ -579,8 +582,8 @@ def run(task_id, task_args):
         if run_ingestion_program:
             ingestion_stdout.close()
             ingestion_stderr.close()
-            put_blob(ingestion_program_stderr_url, ingestion_stdout_file)
-            put_blob(ingestion_program_output_url, ingestion_stderr_file)
+            put_blob(ingestion_program_output_url, ingestion_stdout_file)
+            put_blob(ingestion_program_stderr_url, ingestion_stderr_file)
 
         private_dir = join(output_dir, 'private')
         if os.path.exists(private_dir):
