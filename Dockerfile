@@ -1,7 +1,7 @@
 FROM python:2.7
 
-# Install docker 17.06.00
-RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=17.06.0~ce-0~debian/' | sh
+# Install a specific version of docker
+RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~debian/' | sh
 
 # Move into our worker directory, so we're not in /
 WORKDIR /worker/
