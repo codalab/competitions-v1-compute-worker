@@ -470,7 +470,7 @@ def run(task_id, task_args):
                     .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                ingestion_prog_cmd = ["PYTHONUNBUFFERED=1"] + ingestion_prog_cmd.split(' ')
+                ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
                 ingestion_docker_cmd = [
                     'docker',
                     'run',
@@ -544,10 +544,15 @@ def run(task_id, task_args):
                     logger.info("Exit Code ingestion process: %d", ingestion_program_exit_code)
                     debug_metadata['ingestion_program_duration'] = time.time() - ingestion_program_start_time
             else:
-                exit_code = 0  # let code down below know everything went OK
+                # let code down below know everything went OK
+                exit_code = 0
+                ingestion_program_exit_code = 0
 
+            # Set exit codes to 0 so task is marked as finished
             if not evaluator_process:
-                exit_code = 0  # Set exit code to 0 so task is marked as finished
+                exit_code = 0
+            if not ingestion_process:
+                ingestion_program_exit_code = 0
 
             endTime = time.time()
             elapsedTime = endTime - startTime
@@ -556,18 +561,20 @@ def run(task_id, task_args):
                 # Overwrite prog_status array with dict
                 prog_status = {
                     'exitCode': exit_code,
+                    'ingestionExitCode': ingestion_program_exit_code,
                     'elapsedTime': elapsedTime
                 }
             else:
                 # otherwise we're doing multi-track and processing multiple commands so append to the array
                 prog_status.append({
                     'exitCode': exit_code,
+                    'ingestionExitCode': ingestion_program_exit_code,
                     'elapsedTime': elapsedTime
                 })
             with open(join(output_dir, 'metadata'), 'w') as f:
                 f.write(yaml.dump(prog_status, default_flow_style=False))
 
-            if timed_out or exit_code != 0:
+            if timed_out or exit_code != 0 or ingestion_program_exit_code != 0:
                 # Submission failed somewhere in here, bomb out
                 break
 
@@ -627,7 +634,7 @@ def run(task_id, task_args):
             _send_update(task_id, 'failed', secret, extra={
                 'metadata': debug_metadata
             })
-        elif exit_code != 0:
+        elif exit_code != 0 or ingestion_program_exit_code != 0:
             logger.exception("Run task exit code non-zero (task_id=%s).", task_id)
             _send_update(task_id, 'failed', secret, extra={
                 'traceback': open(stderr_file).read(),
