@@ -425,8 +425,10 @@ def run(task_id, task_args):
                 docker_cmd = [
                     'docker',
                     'run',
-                    # Remove it after run,
+                    # Remove it after run
                     '--rm',
+                    # Don't allow subprocesses to raise privileges
+                    '--security-opt=no-new-privileges',
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
@@ -474,8 +476,10 @@ def run(task_id, task_args):
                 ingestion_docker_cmd = [
                     'docker',
                     'run',
-                    # Remove it after run,
+                    # Remove it after run
                     '--rm',
+                    # Don't allow subprocesses to raise privileges
+                    '--security-opt=no-new-privileges',
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
