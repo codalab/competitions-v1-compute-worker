@@ -237,12 +237,10 @@ def run(task_id, task_args):
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
 
-    if docker_image == ingestion_program_docker_image:
+    do_docker_pull(docker_image, task_id, secret)
+
+    if not docker_image == ingestion_program_docker_image:
         # If the images are the same only do one
-        do_docker_pull(docker_image, task_id, secret)
-    else:
-        # Else, pull both
-        do_docker_pull(docker_image, task_id, secret)
         do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
