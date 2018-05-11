@@ -20,7 +20,7 @@ import yaml
 
 from os.path import join, exists
 from glob import glob
-from subprocess import Popen, call
+from subprocess import Popen, call, check_output, CalledProcessError
 from zipfile import ZipFile
 
 from billiard import SoftTimeLimitExceeded
@@ -60,6 +60,21 @@ def docker_image_clean(image_name):
     # If any not allowed are found, replaced with second argument to sub.
     image_name = re.sub('[^0-9a-zA-Z/.:-]+', '', image_name)
     return image_name
+
+
+def do_docker_pull(image_name, task_id, secret):
+    logger.info("Running docker pull for image: {}".format(image_name))
+    try:
+        cmd = ['docker', 'pull', image_name]
+        docker_pull = check_output(cmd)
+        logger.info("Docker pull complete for image: {0} with output of {1}".format(image_name, docker_pull))
+    except CalledProcessError as error:
+        logger.info("Docker pull for image: {} returned a non-zero exit code!")
+
+        _send_update(task_id, 'failed', secret, extra={
+            'traceback': error.output,
+            'metadata': error.returncode
+        })
 
 
 # def docker_get_size():
@@ -221,6 +236,12 @@ def run(task_id, task_args):
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
+
+    do_docker_pull(docker_image, task_id, secret)
+
+    if not docker_image == ingestion_program_docker_image:
+        # If the images are the same only do one
+        do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
         logger.info("Task is prediction.")
