@@ -250,7 +250,7 @@ def run(task_id, task_args):
 
     running_processes = '<DISABLED>'
     debug_metadata = {
-        "hostname": socket.gethostname(),
+        "hostname": os.environ.get("CODALAB_HOSTNAME") or socket.gethostname(),
 
         "ingestion_program_duration": None,
 
@@ -287,7 +287,7 @@ def run(task_id, task_args):
 
         run_dir = join(root_dir, 'run')
         shared_dir = tempfile.mkdtemp(dir=temp_dir)
-        hidden_ref_dir = None
+        hidden_ref_dir = ''
 
         # Fetch and stage the bundles
         logger.info("Fetching bundles...")
@@ -325,6 +325,8 @@ def run(task_id, task_args):
             if not ingestion_prog_info:
                 raise Exception("Ingestion program is missing metadata. Make sure the folder structure is "
                                 "appropriate (metadata not in a subdirectory).")
+
+        logger.info("Ingestion program: {}".format(ingestion_prog_info))
 
         # Look for submission/scoring program metadata, if we're scoring -- otherwise ingestion
         # program will handle the case where a code submission has no metadata.
@@ -395,7 +397,7 @@ def run(task_id, task_args):
             # if given, run the code or move the results appropriately
 
             if is_predict_step:
-                logger.info("Running ingestion program")
+                logger.info("Doing ingestion program checks")
 
                 # Check that we should even be running this submission in a special way, may
                 # just be results..
@@ -429,6 +431,11 @@ def run(task_id, task_args):
                     os.rmdir(output_dir)
                     logger.info("Renaming submission_path: {} to old output_dir name {}".format(submission_path, output_dir))
                     os.rename(submission_path, output_dir)
+            else:
+                # During scoring we don't worry about sharing directories and such when using ingestion programs
+                if ingestion_prog_info:
+                    logger.info("Running organizer provided ingestion program for scoring")
+                    run_ingestion_program = True
 
             evaluator_process = None
             if prog_cmd:
@@ -644,10 +651,6 @@ def run(task_id, task_args):
                         put_blob(detailed_results_url, file_to_upload)
                         html_found = True
 
-        if os.environ.get("DONT_FINALIZE_SUBMISSION"):
-            logger.info("NOT FINALIZING SUBMISSION!")
-            return
-
         # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
         debug_metadata["end_swap_memory_usage"] = json.dumps(psutil.swap_memory()._asdict())
@@ -676,11 +679,6 @@ def run(task_id, task_args):
             debug_metadata["end_swap_memory_usage"] = json.dumps(psutil.swap_memory()._asdict())
             debug_metadata["end_cpu_usage"] = psutil.cpu_percent(interval=None)
 
-        if os.environ.get("DONT_FINALIZE_SUBMISSION"):
-            logger.info("NOT FINALIZING SUBMISSION!")
-            logger.info(traceback.format_exc())
-            return
-
         logger.exception("Run task failed (task_id=%s).", task_id)
         _send_update(task_id, 'failed', secret, extra={
             'traceback': traceback.format_exc(),
@@ -688,7 +686,7 @@ def run(task_id, task_args):
         })
 
     # comment out for dev and viewing of raw folder outputs.
-    if root_dir is not None:
+    if root_dir is not None and not os.environ.get("DONT_FINALIZE_SUBMISSION"):
         # Try cleaning-up temporary directory
         try:
             os.chdir(current_dir)
