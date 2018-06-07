@@ -455,6 +455,8 @@ def run(task_id, task_args):
                     'run',
                     # Remove it after run
                     '--rm',
+                    # Try the new timeout feature
+                    '--stop-timeout={}'.format(execution_time_limit),
                     # Don't allow subprocesses to raise privileges
                     '--security-opt=no-new-privileges',
                     # Set the right volume
@@ -506,6 +508,8 @@ def run(task_id, task_args):
                     'run',
                     # Remove it after run
                     '--rm',
+                    # Try the new timeout feature
+                    '--stop-timeout={}'.format(execution_time_limit),
                     # Don't allow subprocesses to raise privileges
                     '--security-opt=no-new-privileges',
                     # Set the right volume
