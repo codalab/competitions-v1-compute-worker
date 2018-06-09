@@ -4,6 +4,7 @@ import urllib
 import json
 import logging.config
 import os
+import uuid
 
 import psutil
 import signal
@@ -450,11 +451,14 @@ def run(task_id, task_args):
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
                 prog_cmd = prog_cmd.split(' ')
+                eval_container_name = uuid.uuid4()
                 docker_cmd = [
                     'docker',
                     'run',
                     # Remove it after run
                     '--rm',
+                    # Give it a name we have stored as a variable
+                    '--name={}'.format(eval_container_name),
                     # Try the new timeout feature
                     '--stop-timeout={}'.format(execution_time_limit),
                     # Don't allow subprocesses to raise privileges
@@ -503,11 +507,14 @@ def run(task_id, task_args):
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
                 ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
+                ing_container_name = uuid.uuid4()
                 ingestion_docker_cmd = [
                     'docker',
                     'run',
                     # Remove it after run
                     '--rm',
+                    # Give it a name we have stored as a variable
+                    '--name={}'.format(ing_container_name),
                     # Try the new timeout feature
                     '--stop-timeout={}'.format(execution_time_limit),
                     # Don't allow subprocesses to raise privileges
@@ -566,9 +573,11 @@ def run(task_id, task_args):
                     if evaluator_process:
                         exit_code = -1
                         evaluator_process.kill()
+                        call(['docker', 'kill', '{}'.format(eval_container_name)])
                     if ingestion_process:
                         ingestion_program_exit_code = -1
                         ingestion_process.kill()
+                        call(['docker', 'kill', '{}'.format(ing_container_name)])
 
                     timed_out = True
 
