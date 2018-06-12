@@ -13,6 +13,8 @@ mkdir -p /tmp/codalab && docker run \
     --name compute_worker \
     --env BROKER_URL=<queue broker url> \
     --restart unless-stopped \
+    --log-opt max-size=50m \
+    --log-opt max-file=3 \
     codalab/competitions-v1-compute-worker:latest
 ```
 
@@ -31,6 +33,8 @@ docker run \
     --name compute_worker \
     --env-file .env \
     --restart unless-stopped \
+    --log-opt max-size=50m \
+    --log-opt max-file=3 \
     codalab/competitions-v1-compute-worker:latest
 ```
 
