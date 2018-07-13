@@ -21,7 +21,7 @@ import yaml
 
 from os.path import join, exists
 from glob import glob
-from subprocess import Popen, call, check_output, CalledProcessError
+from subprocess import Popen, call, check_output, CalledProcessError, PIPE
 from zipfile import ZipFile
 
 from billiard import SoftTimeLimitExceeded
@@ -226,7 +226,7 @@ def run(task_id, task_args):
     ingestion_program_stderr_url = task_args['ingestion_program_stderr_url']
     ingestion_program_output_url = task_args['ingestion_program_output_url']
     output_url = task_args['output_url']
-    detailed_results_url = task_args['detailed_results_url']
+    detailed_results_url = task_args.get('detailed_results_url')
     private_output_url = task_args['private_output_url']
 
     execution_time_limit = task_args['execution_time_limit']
@@ -381,6 +381,8 @@ def run(task_id, task_args):
         ingestion_program_start_time = None
         ingestion_program_end_time = None
 
+        default_detailed_result_path = os.path.join(output_dir, 'detailed_results.html')
+
         run_ingestion_program = False
 
         timed_out = False
@@ -438,7 +440,13 @@ def run(task_id, task_args):
                     logger.info("Running organizer provided ingestion program for scoring")
                     run_ingestion_program = True
 
+            if detailed_results_url:
+                # Create empty detailed results
+                open(default_detailed_result_path, 'a').close()
+                os.chmod(default_detailed_result_path, 0o777)
+
             evaluator_process = None
+            detailed_result_process = None
             if prog_cmd:
                 # Update command-line with the real paths
                 prog_cmd = prog_cmd\
@@ -484,6 +492,18 @@ def run(task_id, task_args):
                     # env=os.environ,
                     # cwd=join(run_dir, 'program')
                 )
+
+                # We're running a program, not just result submission, so we should keep an eye on detailed results
+                if detailed_results_url:
+                    detailed_result_watcher_args = [
+                        'bash',
+                        '/worker/detailed_result_put.sh',
+                        str(detailed_results_url),
+                        str(default_detailed_result_path)
+                    ]
+                    logger.info("Detailed results watcher program: %s", " ".join(detailed_result_watcher_args))
+                    detailed_result_process = Popen(detailed_result_watcher_args)
+
 
             if run_ingestion_program:
                 if 'command' not in ingestion_prog_info:
@@ -578,6 +598,8 @@ def run(task_id, task_args):
                         ingestion_program_exit_code = -1
                         ingestion_process.kill()
                         call(['docker', 'kill', '{}'.format(ingestion_container_name)])
+                    if detailed_result_process:
+                        detailed_result_process.kill()
 
                     timed_out = True
 
@@ -588,6 +610,9 @@ def run(task_id, task_args):
                 if ingestion_process:
                     logger.info("Exit Code ingestion process: %d", ingestion_program_exit_code)
                     debug_metadata['ingestion_program_duration'] = time.time() - ingestion_program_start_time
+
+                if detailed_result_process:
+                    detailed_result_process.kill()
             else:
                 # let code down below know everything went OK
                 exit_code = 0
@@ -651,18 +676,29 @@ def run(task_id, task_args):
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         put_blob(output_url, output_file)
 
-        # Check if the output folder contain an "html file" and copy the html file as detailed_results.html
-        # traverse root directory, and list directories as dirs and files as files
-        html_found = False
-        for root, dirs, files in os.walk(output_dir):
-            if not (html_found):
-                path = root.split('/')
-                for file in files:
-                    file_to_upload = os.path.join(root,file)
-                    file_ext = os.path.splitext(file_to_upload)[1]
-                    if file_ext.lower() == ".html":
-                        put_blob(detailed_results_url, file_to_upload)
-                        html_found = True
+
+        if detailed_results_url:
+            detailed_result_data = open(default_detailed_result_path).read()
+            if not detailed_result_data:
+                #
+                # *LEGACY* detailed result, grabs first *.html it sees -- newer versions use regular path
+                # and update in real time
+                #
+
+                for root, dirs, files in os.walk(output_dir):
+                    # Check if the output folder contain an "html file" and copy the html file as detailed_results.html
+                    # traverse root directory, and list directories as dirs and files as files
+                    html_found = False
+                    if not (html_found):
+                        path = root.split('/')
+                        for file in files:
+                            file_to_upload = os.path.join(root,file)
+                            file_ext = os.path.splitext(file_to_upload)[1]
+                            if file_ext.lower() == ".html":
+                                put_blob(detailed_results_url, file_to_upload)
+                                html_found = True
+                    else:
+                        break
 
         # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
