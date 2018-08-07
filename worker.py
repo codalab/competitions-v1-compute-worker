@@ -189,6 +189,7 @@ def put_blob(url, file_path):
         data=open(file_path, 'rb'),
         headers={
             'x-ms-blob-type': 'BlockBlob',
+            'x-ms-version': '2018-03-28',
         }
     )
 
