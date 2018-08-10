@@ -105,7 +105,14 @@ def get_bundle(root_dir, relative_dir, url):
     # Save the bundle to a temp file
     # file_download_path = os.path.join(root_dir, file_name)
     bundle_file = tempfile.NamedTemporaryFile(prefix='tmp', suffix=file_ext, dir=root_dir, delete=False)
-    urllib.urlretrieve(url, bundle_file.name)
+
+    retries = 0
+    while retries < 3:
+        try:
+            urllib.urlretrieve(url, bundle_file.name)
+            break
+        except:
+            retries += 1
 
     # Extracting files or grabbing extras
     bundle_path = join(root_dir, relative_dir)
