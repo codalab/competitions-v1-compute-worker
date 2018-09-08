@@ -297,12 +297,11 @@ def run(task_id, task_args):
         bundles = get_bundle(root_dir, 'run', bundle_url)
 
         # If we were passed hidden data, move it
-        if is_predict_step:
-            hidden_ref_original_location = join(run_dir, 'hidden_ref')
-            if exists(hidden_ref_original_location):
-                logger.info("Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
-                shutil.move(hidden_ref_original_location, temp_dir)
-                hidden_ref_dir = join(temp_dir, 'hidden_ref')
+        hidden_ref_original_location = join(run_dir, 'hidden_ref')
+        if exists(hidden_ref_original_location):
+            logger.info("Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
+            shutil.move(hidden_ref_original_location, temp_dir)
+            hidden_ref_dir = join(temp_dir, 'hidden_ref')
 
         logger.info("Metadata: %s" % bundles)
 
@@ -458,6 +457,11 @@ def run(task_id, task_args):
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
+
+                if is_scoring_step:
+                    # Only during scoring should scoring program have access to some hidden data, NOT ingestion program!
+                    prog_cmd = prog_cmd.replace("$hidden", hidden_ref_dir)
+
                 prog_cmd = prog_cmd.split(' ')
                 eval_container_name = uuid.uuid4()
                 docker_cmd = [
@@ -523,9 +527,13 @@ def run(task_id, task_args):
                     .replace("$output", join(run_dir, 'output')) \
                     .replace("$tmp", join(run_dir, 'temp')) \
                     .replace("$shared", shared_dir) \
-                    .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
+
+                if is_predict_step:
+                    # Only during prediction should ingestion program have access to some hidden data
+                    ingestion_prog_cmd = ingestion_prog_cmd.replace("$hidden", hidden_ref_dir)
+
                 ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
                 ingestion_container_name = uuid.uuid4()
                 ingestion_docker_cmd = [
