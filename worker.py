@@ -299,9 +299,9 @@ def run(task_id, task_args):
         # If we were passed hidden data, move it
         hidden_ref_original_location = join(run_dir, 'hidden_ref')
         if exists(hidden_ref_original_location):
-            logger.info("Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
-            shutil.move(hidden_ref_original_location, temp_dir)
-            hidden_ref_dir = join(temp_dir, 'hidden_ref')
+            logger.info("Found reference data AND an ingestion program, hiding reference data")
+            hidden_ref_dir = join(temp_dir, 'hidden_ref_{}'.format(uuid.uuid4()))
+            shutil.move(hidden_ref_original_location, hidden_ref_dir)
 
         logger.info("Metadata: %s" % bundles)
 
@@ -475,6 +475,15 @@ def run(task_id, task_args):
                     '--stop-timeout={}'.format(execution_time_limit),
                     # Don't allow subprocesses to raise privileges
                     '--security-opt=no-new-privileges',
+                ]
+
+                if is_scoring_step and hidden_ref_dir:
+                    # Only scoring program should have hidden ref dir
+                    docker_cmd += [
+                        '-v', '{0}:{0}'.format(hidden_ref_dir),
+                    ]
+
+                docker_cmd += [
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),

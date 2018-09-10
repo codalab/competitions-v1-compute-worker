@@ -26,6 +26,9 @@ Edit `.env_sample` and save it as `.env`
 Make sure the temp directory you select is created and pass it in this command
 
 ```
+docker stop compute_worker
+docker rm compute_worker
+
 docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /tmp/codalab:/tmp/codalab \
