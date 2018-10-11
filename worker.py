@@ -693,7 +693,6 @@ def run(task_id, task_args):
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         put_blob(output_url, output_file)
 
-
         if detailed_results_url:
             detailed_result_data = open(default_detailed_result_path).read()
             if not detailed_result_data:
