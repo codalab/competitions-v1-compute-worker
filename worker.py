@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import hashlib
 import urllib
 
 import json
@@ -94,7 +95,18 @@ def do_docker_pull(image_name, task_id, secret):
 #         os.system("docker system prune --force")
 
 
-def get_bundle(root_dir, relative_dir, url):
+def get_folder_size_in_gb(folder):
+    total_size = os.path.getsize(folder)
+    for item in os.listdir(folder):
+        itempath = os.path.join(folder, item)
+        if os.path.isfile(itempath):
+            total_size += os.path.getsize(itempath)
+        elif os.path.isdir(itempath):
+            total_size += get_folder_size_in_gb(itempath)
+    return total_size / 1024 / 1024 / 1024
+
+
+def get_bundle(cache_dir, root_dir, relative_dir, url):
     # get file name from /test.zip?signature=!@#a/df
     url_without_params = url.split('?')[0]
     file_name = url_without_params.split('/')[-1]
@@ -104,17 +116,19 @@ def get_bundle(root_dir, relative_dir, url):
 
     # Save the bundle to a temp file
     # file_download_path = os.path.join(root_dir, file_name)
-    bundle_file = tempfile.NamedTemporaryFile(prefix='tmp', suffix=file_ext, dir=root_dir, delete=False)
-    urllib.urlretrieve(url, bundle_file.name)
+    url_hash = hashlib.sha256(url_without_params).hexdigest()
+    cached_bundle_file_path = join(cache_dir, url_hash)
+    if not os.path.exists(cached_bundle_file_path):
+        urllib.urlretrieve(url, cached_bundle_file_path)
 
     # Extracting files or grabbing extras
     bundle_path = join(root_dir, relative_dir)
     metadata_path = join(bundle_path, 'metadata')
 
     if file_ext == '.zip':
-        logger.info("get_bundle :: Unzipping %s" % bundle_file.name)
+        logger.info("get_bundle :: Unzipping %s" % cached_bundle_file_path)
         # Unzip file to relative dir, if a zip
-        with ZipFile(bundle_file.file, 'r') as z:
+        with ZipFile(cached_bundle_file_path, 'r') as z:
             z.extractall(bundle_path)
 
         # check if we just unzipped something containing a folder and nothing else
@@ -137,7 +151,7 @@ def get_bundle(root_dir, relative_dir, url):
     else:
         # Otherwise we have some metadata type file, like run.txt containing other bundles to fetch.
         os.mkdir(bundle_path)
-        shutil.copyfile(bundle_file.name, metadata_path)
+        shutil.copyfile(cached_bundle_file_path, metadata_path)
 
     os.chmod(bundle_path, 0o777)
 
@@ -155,7 +169,7 @@ def get_bundle(root_dir, relative_dir, url):
                     logger.debug("get_bundle :: Fetching recursive bundle %s %s %s" % (bundle_path, k, v))
                     # Here K is the relative directory and V is the url, like
                     # input: http://test.com/goku?sas=123
-                    metadata[k] = get_bundle(bundle_path, k, v)
+                    metadata[k] = get_bundle(cache_dir, bundle_path, k, v)
     return metadata
 
 
@@ -236,6 +250,7 @@ def run(task_id, task_args):
     secret = task_args['secret']
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
+    cache_dir = os.environ.get('SUBMISSION_CACHE_DIR', '/tmp/cache')
     root_dir = None
 
     do_docker_pull(docker_image, task_id, secret)
@@ -294,7 +309,7 @@ def run(task_id, task_args):
         logger.info("Fetching bundles...")
         start = time.time()
 
-        bundles = get_bundle(root_dir, 'run', bundle_url)
+        bundles = get_bundle(cache_dir, root_dir, 'run', bundle_url)
 
         # If we were passed hidden data, move it
         hidden_ref_original_location = join(run_dir, 'hidden_ref')
