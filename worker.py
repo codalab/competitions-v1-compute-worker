@@ -119,6 +119,9 @@ def get_bundle(cache_dir, root_dir, relative_dir, url):
     url_hash = hashlib.sha256(url_without_params).hexdigest()
     cached_bundle_file_path = join(cache_dir, url_hash)
     if not os.path.exists(cached_bundle_file_path):
+        # Also make sure cache dir exists
+        if not exists(cache_dir):
+            os.mkdir(cache_dir)
         urllib.urlretrieve(url, cached_bundle_file_path)
 
     # Extracting files or grabbing extras
