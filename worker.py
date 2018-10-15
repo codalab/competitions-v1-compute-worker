@@ -96,6 +96,9 @@ def do_docker_pull(image_name, task_id, secret):
 
 
 def get_folder_size_in_gb(folder):
+    if not exists(folder):
+        return 0
+
     total_size = os.path.getsize(folder)
     for item in os.listdir(folder):
         itempath = os.path.join(folder, item)
@@ -776,3 +779,10 @@ def run(task_id, task_args):
             shutil.rmtree(root_dir, ignore_errors=True)
         except:
             logger.exception("Unable to clean-up local folder %s (task_id=%s)", root_dir, task_id)
+
+    cache_size_limit_in_gb = int(os.environ.get("SUBMISSION_CACHE_DIR_MAX_SIZE_IN_GB", 10))
+    cache_size_in_gb = get_folder_size_in_gb(cache_dir)
+    logger.info("Cache dir size = {}GB".format(cache_size_in_gb))
+    if cache_size_in_gb >= cache_size_limit_in_gb:
+        logger.info("Clearing cache directory!")
+        shutil.rmtree(cache_dir, ignore_errors=True)
