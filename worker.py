@@ -63,6 +63,13 @@ def docker_image_clean(image_name):
     return image_name
 
 
+def get_available_memory():
+    """Get available memory in megabytes"""
+    mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    mem_mib = mem_bytes / (1024. ** 2)
+    return int(mem_mib)
+
+
 def do_docker_pull(image_name, task_id, secret):
     logger.info("Running docker pull for image: {}".format(image_name))
     try:
@@ -396,6 +403,9 @@ def run(task_id, task_args):
         timed_out = False
         exit_code = None
         ingestion_program_exit_code = None
+        available_memory_mib = get_available_memory()
+
+        logger.info("Available memory: {}MB".format(available_memory_mib))
 
         # If our program command list is empty and we're not scoring, we probably got a result submission
         if not prog_cmd_list and is_predict_step:
@@ -482,6 +492,8 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
+                    # Set aside 512m memory for the host
+                    '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Don't buffer python output, so we don't lose any
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory
@@ -551,6 +563,8 @@ def run(task_id, task_args):
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
                     '-v', '{0}:{0}'.format(hidden_ref_dir),
+                    # Set aside 512m memory for the host
+                    '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Add the participants submission dir to PYTHONPATH
                     '-e', 'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
                     '-e', 'PYTHONUNBUFFERED=1',
