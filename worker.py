@@ -663,7 +663,7 @@ def run(task_id, task_args):
                     'ingestionExitCode': ingestion_program_exit_code,
                     'elapsedTime': elapsedTime
                 })
-            with open(join(output_dir, 'metadata'), 'w') as f:
+            with open(join(output_dir, 'metadata'), 'a+') as f:
                 f.write(yaml.dump(prog_status, default_flow_style=False))
 
             if timed_out or exit_code != 0 or ingestion_program_exit_code != 0:
