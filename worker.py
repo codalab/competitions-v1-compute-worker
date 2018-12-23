@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import sys
 import urllib
 
 import json
@@ -373,7 +374,9 @@ def run(task_id, task_args):
         #
         # Invoke custom evaluation program
         os.chdir(run_dir)
-        os.environ["PATH"] += os.pathsep + run_dir + "/program"
+        sys.path.append(os.pathsep + run_dir + "/program")
+        # Old BAD way, causes error after a few days from appending to path over and over
+        # os.environ["PATH"] += os.pathsep + run_dir + "/program"
         logger.info("Execution directory: %s", run_dir)
 
         if is_predict_step:
