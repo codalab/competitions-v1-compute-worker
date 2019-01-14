@@ -252,6 +252,7 @@ def run(task_id, task_args):
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
+    docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
 
     do_docker_pull(docker_image, task_id, secret)
 
@@ -498,6 +499,8 @@ def run(task_id, task_args):
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory
                     '-w', run_dir,
+                    # Set container runtime
+                    '--runtime', docker_runtime,
                     # Note that hidden data dir is excluded here!
                     # Set the right image
                     docker_image,

@@ -77,3 +77,7 @@ Special env flags
 Sometimes it may be useful to pause the compute worker and return instead of finishing a submission. This leaves the
 submission in a state where it hasn't been cleaned up yet and you can attempt to re-run it manually.
 
+### DOCKER_RUNTIME
+
+To enable nvidia runtime environment for containers in your queue set `DOCKER_RUNTIME` to `nvidia`, to use default runtime
+leave this value blank or unset.
