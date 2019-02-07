@@ -197,6 +197,20 @@ def _send_update(task_id, status, secret, virtual_host='/', extra=None):
         )
 
 
+def _clean_file(file_path):
+    suppressed_messages = [
+        'WARNING: Your kernel does not support swap limit capabilities or the cgroup is not mounted. Memory limited without swap.\n'
+    ]
+    logger.info("CLEAN FILE CALLED")
+    with open(file_path, 'r') as file:
+        if file.readline() in suppressed_messages:
+            logger.info("REMOVING WARNING")
+            cmd = "sed -i '' '1d' '{}'".format(file_path)
+            proc = os.popen(cmd)
+            proc.close()
+    return file_path
+
+
 def put_blob(url, file_path):
     logger.info("Putting blob %s in %s" % (file_path, url))
     requests.put(
@@ -207,6 +221,8 @@ def put_blob(url, file_path):
             'x-ms-version': '2018-03-28',
         }
     )
+
+# file_path = "/app/codalab/some_zip.zip"
 
 
 class ExecutionTimeLimitExceeded(Exception):
@@ -654,13 +670,13 @@ def run(task_id, task_args):
         logger.info("Saving output files")
 
         put_blob(stdout_url, stdout_file)
-        put_blob(stderr_url, stderr_file)
+        put_blob(stderr_url, _clean_file(stderr_file))
 
         if run_ingestion_program:
             ingestion_stdout.close()
             ingestion_stderr.close()
             put_blob(ingestion_program_output_url, ingestion_stdout_file)
-            put_blob(ingestion_program_stderr_url, ingestion_stderr_file)
+            put_blob(ingestion_program_stderr_url, _clean_file(ingestion_stderr_file))
 
         private_dir = join(output_dir, 'private')
         if os.path.exists(private_dir):
