@@ -506,7 +506,6 @@ def run(task_id, task_args):
                     docker_image,
                 ]
                 prog_cmd = docker_cmd + prog_cmd
-
                 logger.info("Invoking program: %s", " ".join(prog_cmd))
                 evaluator_process = Popen(
                     prog_cmd,
@@ -573,11 +572,14 @@ def run(task_id, task_args):
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory to submission dir
                     '-w', run_dir,
+                    # Set container runtime
+                    '--runtime', docker_runtime,
                     # Set the right image
                     ingestion_program_docker_image,
                 ]
                 ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
+                logger.error(ingestion_prog_cmd)
                 logger.info("Invoking ingestion program: %s", " ".join(ingestion_prog_cmd))
                 ingestion_process = Popen(
                     ingestion_prog_cmd,

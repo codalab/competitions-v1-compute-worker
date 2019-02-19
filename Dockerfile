@@ -18,4 +18,4 @@ COPY *.py /worker/
 COPY detailed_result_put.sh /worker/
 
 # Run it
-CMD celery -A worker worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=${WORKER_CONCURRENCY}
+CMD celery -A worker worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
