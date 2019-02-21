@@ -6,8 +6,8 @@ Running
 *Note: this will make a `/tmp/codalab` directory*
 
 ```
-mkdir -p /tmp/codalab && docker run \
-    -v /var/run/docker.sock:/var/run/docker.sock \
+mkdir -p /tmp/codalab && nvidia-docker run \
+    -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
     -v /tmp/codalab:/tmp/codalab \
     -d \
     --name compute_worker \
@@ -15,7 +15,7 @@ mkdir -p /tmp/codalab && docker run \
     --restart unless-stopped \
     --log-opt max-size=50m \
     --log-opt max-file=3 \
-    codalab/competitions-v1-compute-worker:latest
+    codalab/competitions-v1-nvidia-worker:latest
 ```
 
 
@@ -26,8 +26,8 @@ Edit `.env_sample` and save it as `.env`
 Make sure the temp directory you select is created and pass it in this command
 
 ```
-docker run \
-    -v /var/run/docker.sock:/var/run/docker.sock \
+nvidia-docker run \
+    -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
     -v /tmp/codalab:/tmp/codalab \
     -d \
     --name compute_worker \
@@ -35,19 +35,19 @@ docker run \
     --restart unless-stopped \
     --log-opt max-size=50m \
     --log-opt max-file=3 \
-    codalab/competitions-v1-compute-worker:latest
+    codalab/competitions-v1-nvidia-worker:latest
 ```
 
 ### To get output of the worker
 
 ```
-$ docker logs -f compute_worker
+$ nvidia-docker logs -f compute_worker
 ```
 
 ### To stop the worker
 
 ```
-$ docker kill compute_worker
+$ nvidia-docker kill compute_worker
 ```
 
 
@@ -57,14 +57,14 @@ Development
 To re-build the image:
 
 ```
-docker build -t competitions-v1-compute-worker .
+docker build -t competitions-v1-nvidia-worker .
 ```
 
 Updating the image
 
 ```
-docker build -t codalab/competitions-v1-compute-worker:latest .
-docker push codalab/competitions-v1-compute-worker
+docker build -t codalab/competitions-v1-nvidia-worker:latest .
+docker push codalab/competitions-v1-nvidia-worker:latest
 ```
 
 

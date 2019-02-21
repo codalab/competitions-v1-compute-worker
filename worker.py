@@ -74,7 +74,7 @@ def docker_image_clean(image_name):
 def do_docker_pull(image_name, task_id, secret):
     logger.info("Running docker pull for image: {}".format(image_name))
     try:
-        cmd = ['docker', 'pull', image_name]
+        cmd = ['nvidia-docker', 'pull', image_name]
         docker_pull = check_output(cmd)
         logger.info("Docker pull complete for image: {0} with output of {1}".format(image_name, docker_pull))
     except CalledProcessError as error:
@@ -598,11 +598,11 @@ def run(task_id, task_args):
                     if evaluator_process:
                         exit_code = -1
                         evaluator_process.kill()
-                        call(['docker', 'kill', '{}'.format(eval_container_name)])
+                        call(['nvidia-docker', 'kill', '{}'.format(eval_container_name)])
                     if ingestion_process:
                         ingestion_program_exit_code = -1
                         ingestion_process.kill()
-                        call(['docker', 'kill', '{}'.format(ingestion_container_name)])
+                        call(['nvidia-docker', 'kill', '{}'.format(ingestion_container_name)])
 
                     timed_out = True
 
