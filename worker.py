@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import hashlib
 import urllib
 
 import json
@@ -22,7 +23,7 @@ import yaml
 
 from os.path import join, exists
 from glob import glob
-from subprocess import Popen, call, check_output, CalledProcessError
+from subprocess import Popen, call, check_output, CalledProcessError, PIPE
 from zipfile import ZipFile
 
 from billiard import SoftTimeLimitExceeded
@@ -102,7 +103,21 @@ def do_docker_pull(image_name, task_id, secret):
 #         os.system("docker system prune --force")
 
 
-def get_bundle(root_dir, relative_dir, url):
+def get_folder_size_in_gb(folder):
+    if not exists(folder):
+        return 0
+
+    total_size = os.path.getsize(folder)
+    for item in os.listdir(folder):
+        itempath = os.path.join(folder, item)
+        if os.path.isfile(itempath):
+            total_size += os.path.getsize(itempath)
+        elif os.path.isdir(itempath):
+            total_size += get_folder_size_in_gb(itempath)
+    return total_size / 1024 / 1024 / 1024
+
+
+def get_bundle(cache_dir, root_dir, relative_dir, url):
     # get file name from /test.zip?signature=!@#a/df
     url_without_params = url.split('?')[0]
     file_name = url_without_params.split('/')[-1]
@@ -110,26 +125,22 @@ def get_bundle(root_dir, relative_dir, url):
 
     logger.debug("get_bundle :: Getting %s from %s" % (file_name, url))
 
-    # Save the bundle to a temp file
-    # file_download_path = os.path.join(root_dir, file_name)
-    bundle_file = tempfile.NamedTemporaryFile(prefix='tmp', suffix=file_ext, dir=root_dir, delete=False)
-
-    retries = 0
-    while retries < 3:
-        try:
-            urllib.urlretrieve(url, bundle_file.name)
-            break
-        except:
-            retries += 1
+    url_hash = hashlib.sha256(url_without_params).hexdigest()
+    cached_bundle_file_path = join(cache_dir, url_hash)
+    if not os.path.exists(cached_bundle_file_path):
+        # Also make sure cache dir exists
+        if not exists(cache_dir):
+            os.mkdir(cache_dir)
+        urllib.urlretrieve(url, cached_bundle_file_path)
 
     # Extracting files or grabbing extras
     bundle_path = join(root_dir, relative_dir)
     metadata_path = join(bundle_path, 'metadata')
 
     if file_ext == '.zip':
-        logger.info("get_bundle :: Unzipping %s" % bundle_file.name)
+        logger.info("get_bundle :: Unzipping %s" % cached_bundle_file_path)
         # Unzip file to relative dir, if a zip
-        with ZipFile(bundle_file.file, 'r') as z:
+        with ZipFile(cached_bundle_file_path, 'r') as z:
             z.extractall(bundle_path)
 
         # check if we just unzipped something containing a folder and nothing else
@@ -152,7 +163,7 @@ def get_bundle(root_dir, relative_dir, url):
     else:
         # Otherwise we have some metadata type file, like run.txt containing other bundles to fetch.
         os.mkdir(bundle_path)
-        shutil.copyfile(bundle_file.name, metadata_path)
+        shutil.copyfile(cached_bundle_file_path, metadata_path)
 
     os.chmod(bundle_path, 0o777)
 
@@ -170,7 +181,7 @@ def get_bundle(root_dir, relative_dir, url):
                     logger.debug("get_bundle :: Fetching recursive bundle %s %s %s" % (bundle_path, k, v))
                     # Here K is the relative directory and V is the url, like
                     # input: http://test.com/goku?sas=123
-                    metadata[k] = get_bundle(bundle_path, k, v)
+                    metadata[k] = get_bundle(cache_dir, bundle_path, k, v)
     return metadata
 
 
@@ -242,7 +253,7 @@ def run(task_id, task_args):
     ingestion_program_stderr_url = task_args['ingestion_program_stderr_url']
     ingestion_program_output_url = task_args['ingestion_program_output_url']
     output_url = task_args['output_url']
-    detailed_results_url = task_args['detailed_results_url']
+    detailed_results_url = task_args.get('detailed_results_url')
     private_output_url = task_args['private_output_url']
 
     execution_time_limit = task_args['execution_time_limit']
@@ -252,6 +263,7 @@ def run(task_id, task_args):
     secret = task_args['secret']
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
+    cache_dir = os.environ.get('SUBMISSION_CACHE_DIR', '/tmp/cache')
     root_dir = None
 
     do_docker_pull(docker_image, task_id, secret)
@@ -310,15 +322,14 @@ def run(task_id, task_args):
         logger.info("Fetching bundles...")
         start = time.time()
 
-        bundles = get_bundle(root_dir, 'run', bundle_url)
+        bundles = get_bundle(cache_dir, root_dir, 'run', bundle_url)
 
         # If we were passed hidden data, move it
-        if is_predict_step:
-            hidden_ref_original_location = join(run_dir, 'hidden_ref')
-            if exists(hidden_ref_original_location):
-                logger.info("Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
-                shutil.move(hidden_ref_original_location, temp_dir)
-                hidden_ref_dir = join(temp_dir, 'hidden_ref')
+        hidden_ref_original_location = join(run_dir, 'hidden_ref')
+        if exists(hidden_ref_original_location):
+            logger.info("Found reference data AND an ingestion program, hiding reference data")
+            hidden_ref_dir = join(temp_dir, 'hidden_ref_{}'.format(uuid.uuid4()))
+            shutil.move(hidden_ref_original_location, hidden_ref_dir)
 
         logger.info("Metadata: %s" % bundles)
 
@@ -399,6 +410,8 @@ def run(task_id, task_args):
         ingestion_program_start_time = None
         ingestion_program_end_time = None
 
+        default_detailed_result_path = os.path.join(output_dir, 'detailed_results.html')
+
         run_ingestion_program = False
 
         timed_out = False
@@ -459,7 +472,13 @@ def run(task_id, task_args):
                     logger.info("Running organizer provided ingestion program for scoring")
                     run_ingestion_program = True
 
+            if detailed_results_url:
+                # Create empty detailed results
+                open(default_detailed_result_path, 'a').close()
+                os.chmod(default_detailed_result_path, 0o777)
+
             evaluator_process = None
+            detailed_result_process = None
             if prog_cmd:
                 # Update command-line with the real paths
                 prog_cmd = prog_cmd\
@@ -471,6 +490,11 @@ def run(task_id, task_args):
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
+
+                if is_scoring_step:
+                    # Only during scoring should scoring program have access to some hidden data, NOT ingestion program!
+                    prog_cmd = prog_cmd.replace("$hidden", hidden_ref_dir)
+
                 prog_cmd = prog_cmd.split(' ')
                 eval_container_name = uuid.uuid4()
                 docker_cmd = [
@@ -484,6 +508,15 @@ def run(task_id, task_args):
                     '--stop-timeout={}'.format(execution_time_limit),
                     # Don't allow subprocesses to raise privileges
                     '--security-opt=no-new-privileges',
+                ]
+
+                if is_scoring_step and hidden_ref_dir:
+                    # Only scoring program should have hidden ref dir
+                    docker_cmd += [
+                        '-v', '{0}:{0}'.format(hidden_ref_dir),
+                    ]
+
+                docker_cmd += [
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
@@ -508,6 +541,18 @@ def run(task_id, task_args):
                     # cwd=join(run_dir, 'program')
                 )
 
+                # We're running a program, not just result submission, so we should keep an eye on detailed results
+                if detailed_results_url:
+                    detailed_result_watcher_args = [
+                        'bash',
+                        '/worker/detailed_result_put.sh',
+                        str(detailed_results_url),
+                        str(default_detailed_result_path)
+                    ]
+                    logger.info("Detailed results watcher program: %s", " ".join(detailed_result_watcher_args))
+                    detailed_result_process = Popen(detailed_result_watcher_args)
+
+
             if run_ingestion_program:
                 if 'command' not in ingestion_prog_info:
                     raise Exception("Ingestion program metadata was found, but is missing the 'command' attribute,"
@@ -526,9 +571,13 @@ def run(task_id, task_args):
                     .replace("$output", join(run_dir, 'output')) \
                     .replace("$tmp", join(run_dir, 'temp')) \
                     .replace("$shared", shared_dir) \
-                    .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
+
+                if is_predict_step:
+                    # Only during prediction should ingestion program have access to some hidden data
+                    ingestion_prog_cmd = ingestion_prog_cmd.replace("$hidden", hidden_ref_dir)
+
                 ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
                 ingestion_container_name = uuid.uuid4()
                 ingestion_docker_cmd = [
@@ -603,6 +652,8 @@ def run(task_id, task_args):
                         ingestion_program_exit_code = -1
                         ingestion_process.kill()
                         call(['nvidia-docker', 'kill', '{}'.format(ingestion_container_name)])
+                    if detailed_result_process:
+                        detailed_result_process.kill()
 
                     timed_out = True
 
@@ -613,6 +664,9 @@ def run(task_id, task_args):
                 if ingestion_process:
                     logger.info("Exit Code ingestion process: %d", ingestion_program_exit_code)
                     debug_metadata['ingestion_program_duration'] = time.time() - ingestion_program_start_time
+
+                if detailed_result_process:
+                    detailed_result_process.kill()
             else:
                 # let code down below know everything went OK
                 exit_code = 0
@@ -676,18 +730,28 @@ def run(task_id, task_args):
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         put_blob(output_url, output_file)
 
-        # Check if the output folder contain an "html file" and copy the html file as detailed_results.html
-        # traverse root directory, and list directories as dirs and files as files
-        html_found = False
-        for root, dirs, files in os.walk(output_dir):
-            if not (html_found):
-                path = root.split('/')
-                for file in files:
-                    file_to_upload = os.path.join(root,file)
-                    file_ext = os.path.splitext(file_to_upload)[1]
-                    if file_ext.lower() == ".html":
-                        put_blob(detailed_results_url, file_to_upload)
-                        html_found = True
+        if detailed_results_url:
+            detailed_result_data = open(default_detailed_result_path).read()
+            if not detailed_result_data:
+                #
+                # *LEGACY* detailed result, grabs first *.html it sees -- newer versions use regular path
+                # and update in real time
+                #
+
+                for root, dirs, files in os.walk(output_dir):
+                    # Check if the output folder contain an "html file" and copy the html file as detailed_results.html
+                    # traverse root directory, and list directories as dirs and files as files
+                    html_found = False
+                    if not (html_found):
+                        path = root.split('/')
+                        for file in files:
+                            file_to_upload = os.path.join(root,file)
+                            file_ext = os.path.splitext(file_to_upload)[1]
+                            if file_ext.lower() == ".html":
+                                put_blob(detailed_results_url, file_to_upload)
+                                html_found = True
+                    else:
+                        break
 
         # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
@@ -731,3 +795,10 @@ def run(task_id, task_args):
             shutil.rmtree(root_dir, ignore_errors=True)
         except:
             logger.exception("Unable to clean-up local folder %s (task_id=%s)", root_dir, task_id)
+
+    cache_size_limit_in_gb = int(os.environ.get("SUBMISSION_CACHE_DIR_MAX_SIZE_IN_GB", 10))
+    cache_size_in_gb = get_folder_size_in_gb(cache_dir)
+    logger.info("Cache dir size = {}GB".format(cache_size_in_gb))
+    if cache_size_in_gb >= cache_size_limit_in_gb:
+        logger.info("Clearing cache directory!")
+        shutil.rmtree(cache_dir, ignore_errors=True)
