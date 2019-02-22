@@ -498,7 +498,7 @@ def run(task_id, task_args):
                 prog_cmd = prog_cmd.split(' ')
                 eval_container_name = uuid.uuid4()
                 docker_cmd = [
-                    'docker',
+                    'nvidia-docker',
                     'run',
                     # Remove it after run
                     '--rm',
@@ -581,7 +581,7 @@ def run(task_id, task_args):
                 ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
                 ingestion_container_name = uuid.uuid4()
                 ingestion_docker_cmd = [
-                    'docker',
+                    'nvidia-docker',
                     'run',
                     # Remove it after run
                     '--rm',
