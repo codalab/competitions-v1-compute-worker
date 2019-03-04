@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import sys
 import urllib
 
 import json
@@ -51,6 +52,13 @@ def _find_only_folder_with_metadata(path):
             # Check if it contains a metadata file
             if 'metadata' in os.listdir(folder):
                 return folder
+
+
+def get_available_memory():
+    """Get available memory in megabytes"""
+    mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    mem_mib = mem_bytes / (1024. ** 2)
+    return int(mem_mib)
 
 
 def docker_image_clean(image_name):
@@ -373,7 +381,9 @@ def run(task_id, task_args):
         #
         # Invoke custom evaluation program
         os.chdir(run_dir)
-        os.environ["PATH"] += os.pathsep + run_dir + "/program"
+        sys.path.append(os.pathsep + run_dir + "/program")
+        # Old BAD way, causes error after a few days from appending to path over and over
+        # os.environ["PATH"] += os.pathsep + run_dir + "/program"
         logger.info("Execution directory: %s", run_dir)
 
         if is_predict_step:
