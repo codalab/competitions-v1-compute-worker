@@ -650,7 +650,6 @@ def run(task_id, task_args):
                             evaluator_process.kill()
                         except OSError:
                             logger.info("Failed to kill scoring process.")
-                            raise ValueError("Time limit exceeded!")
                         call(['nvidia-docker', 'kill', '{}'.format(eval_container_name)])
                     if ingestion_process:
                         ingestion_program_exit_code = -1
@@ -658,14 +657,12 @@ def run(task_id, task_args):
                             ingestion_process.kill()
                         except OSError:
                             logger.info("Failed to kill ingestion process.")
-                            raise ValueError("Time limit exceeded!")
                         call(['nvidia-docker', 'kill', '{}'.format(ingestion_container_name)])
                     if detailed_result_process:
                         try:
                             detailed_result_process.kill()
                         except OSError:
                             logger.info("Failed to kill detailed results process.")
-                            raise ValueError("Time limit exceeded!")
 
                     timed_out = True
 
@@ -678,7 +675,10 @@ def run(task_id, task_args):
                     debug_metadata['ingestion_program_duration'] = time.time() - ingestion_program_start_time
 
                 if detailed_result_process:
-                    detailed_result_process.kill()
+                    try:
+                        detailed_result_process.kill()
+                    except OSError:
+                        logger.info("Failed to kill detailed results process.")
             else:
                 # let code down below know everything went OK
                 exit_code = 0
