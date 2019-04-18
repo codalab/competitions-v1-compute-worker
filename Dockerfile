@@ -23,6 +23,7 @@ WORKDIR /worker/
 
 # Install Python stuff we need to listen to the queue
 RUN apt-get install python-pip -y
+RUN pip install -U pip
 COPY requirements.txt /worker/requirements.txt
 RUN pip install -r requirements.txt
 

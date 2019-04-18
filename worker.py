@@ -24,7 +24,7 @@ import yaml
 from os.path import join, exists
 from glob import glob
 from subprocess import Popen, call, check_output, CalledProcessError, PIPE
-from zipfile import ZipFile
+from zipfile import ZipFile, BadZipfile
 
 from billiard import SoftTimeLimitExceeded
 from celery import Celery, task
@@ -181,7 +181,11 @@ def get_bundle(cache_dir, root_dir, relative_dir, url):
                     logger.debug("get_bundle :: Fetching recursive bundle %s %s %s" % (bundle_path, k, v))
                     # Here K is the relative directory and V is the url, like
                     # input: http://test.com/goku?sas=123
-                    metadata[k] = get_bundle(cache_dir, bundle_path, k, v)
+                    try:
+                        metadata[k] = get_bundle(cache_dir, bundle_path, k, v)
+                    except BadZipfile:
+                        logger.info("Could not open file, bad zip: {}".format(bundle_path))
+                        continue
     return metadata
 
 
