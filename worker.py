@@ -261,6 +261,8 @@ def run(task_id, task_args):
     private_output_url = task_args['private_output_url']
 
     execution_time_limit = task_args['execution_time_limit']
+    max_execution_time_limit = task_args['max_execution_time_limit']
+    previous_execution_time = task_args['previous_execution_time']
     # container = task_args['container_name']
     is_predict_step = task_args.get("predict", False)
     is_scoring_step = not is_predict_step
@@ -628,7 +630,9 @@ def run(task_id, task_args):
                 # Only if a program is running do these checks, otherwise infinite loop checking nothing!
                 time_difference = time.time() - startTime
                 signal.signal(signal.SIGALRM, alarm_handler)
+
                 signal.alarm(int(math.fabs(math.ceil(execution_time_limit - time_difference))))
+                signal.alarm(int(math.fabs(math.ceil(max_execution_time_limit - time_difference - previous_execution_time))))  # Total Execution
 
                 logger.info("Checking process, exit_code = %s" % exit_code)
 
@@ -753,7 +757,7 @@ def run(task_id, task_args):
                 # *LEGACY* detailed result, grabs first *.html it sees -- newer versions use regular path
                 # and update in real time
                 #
-
+                logger.info("Default detailed results not found. Looking for HTML file")
                 for root, dirs, files in os.walk(output_dir):
                     # Check if the output folder contain an "html file" and copy the html file as detailed_results.html
                     # traverse root directory, and list directories as dirs and files as files
@@ -768,6 +772,9 @@ def run(task_id, task_args):
                                 html_found = True
                     else:
                         break
+            else:
+                logger.info("Default detailed results found. Putting blob.")
+                put_blob(detailed_results_url, join(root_dir, default_detailed_result_path))
 
         # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
