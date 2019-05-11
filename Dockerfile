@@ -23,7 +23,7 @@ WORKDIR /worker/
 
 # Install Python stuff we need to listen to the queue
 RUN apt-get install python-pip -y
-RUN pip install -U pip
+RUN pip install pip==19.1.1
 COPY requirements.txt /worker/requirements.txt
 RUN pip install -r requirements.txt
 
@@ -32,4 +32,4 @@ COPY *.py /worker/
 COPY detailed_result_put.sh /worker/
 
 # Run it
-CMD celery -A worker worker -l info -Q compute-worker -n compute-worker%h -Ofast -Ofair --concurrency=1
+CMD celery -A worker worker -l debug -Q compute-worker -n compute-worker%h -Ofast -Ofair --concurrency=1
