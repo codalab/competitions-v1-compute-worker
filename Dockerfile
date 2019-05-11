@@ -1,10 +1,10 @@
-FROM ubuntu:16.04
+FROM python:3.7.3-slim
 
 RUN apt-get update
 RUN apt-get install curl wget -y
 
 # Install a specific version of docker
-RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~ubuntu/' | sh
+RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~debian/' | sh
 
 # nvidia-docker jazz
 RUN curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | \
@@ -22,8 +22,9 @@ RUN apt-get install entr -y
 WORKDIR /worker/
 
 # Install Python stuff we need to listen to the queue
-RUN apt-get install python-pip -y
-RUN pip install pip==19.1.1
+#RUN apt-get install python3.6-dev python3.6-setuptools -y
+#RUN pip install pip==19.1.1
+RUN apt-get update && apt-get install -y --no-install-recommends gcc musl-dev libc-dev
 COPY requirements.txt /worker/requirements.txt
 RUN pip install -r requirements.txt
 
