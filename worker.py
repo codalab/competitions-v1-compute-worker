@@ -600,7 +600,6 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
-                    '-v', '{0}:{0}'.format(hidden_ref_dir),
                     # Set aside 512m memory for the host
                     '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Add the participants submission dir to PYTHONPATH
@@ -608,9 +607,15 @@ def run(task_id, task_args):
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory to submission dir
                     '-w', run_dir,
-                    # Set the right image
-                    ingestion_program_docker_image,
                 ]
+                if is_predict_step and hidden_ref_dir:
+                    ingestion_docker_cmd += [
+                        '-v', '{0}:{0}'.format(hidden_ref_dir),
+                    ]
+
+                # Set the right image
+                ingestion_docker_cmd.append(ingestion_program_docker_image)
+
                 ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
                 logger.info("Invoking ingestion program: %s", " ".join(ingestion_prog_cmd))
