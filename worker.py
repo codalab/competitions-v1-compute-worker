@@ -508,6 +508,10 @@ def run(task_id, task_args):
                     'run',
                     # Remove it after run
                     '--rm',
+                    # Set shared memory
+                    '--shm-size=8G',
+                    # Set IPC
+                    '--ipc=host',
                     # Give it a name we have stored as a variable
                     '--name={}'.format(eval_container_name),
                     # Try the new timeout feature
@@ -523,6 +527,8 @@ def run(task_id, task_args):
                     ]
 
                 docker_cmd += [
+                    # Try the new timeout feature
+                    '--stop-timeout={}'.format(execution_time_limit),
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
@@ -591,6 +597,10 @@ def run(task_id, task_args):
                     'run',
                     # Remove it after run
                     '--rm',
+                    # Set shared memory
+                    '--shm-size=8G',
+                    # Set IPC
+                    '--ipc=host',
                     # Give it a name we have stored as a variable
                     '--name={}'.format(ingestion_container_name),
                     # Try the new timeout feature
