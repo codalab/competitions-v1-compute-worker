@@ -34,6 +34,9 @@ from celery import Celery, task
 app = Celery('worker')
 app.config_from_object('celeryconfig')
 
+app.conf.worker_concurrency = 1
+app.conf.worker_prefetch_multiplier = 1
+
 logger = logging.getLogger()
 # Stop duplicate log entries in Celery
 logger.propagate = False
