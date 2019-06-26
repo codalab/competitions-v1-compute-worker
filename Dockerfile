@@ -1,4 +1,4 @@
-FROM python:2.7
+FROM python:3
 
 # Install a specific version of docker
 RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~debian/' | sh
@@ -17,5 +17,8 @@ RUN pip install -r requirements.txt
 COPY *.py /worker/
 COPY detailed_result_put.sh /worker/
 
+ENV QUEUE=compute-worker
+    WORKER=worker
+
 # Run it
-CMD celery -A worker worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
+CMD celery -A $WORKER $WORKER -l info -Q $QUEUE -n $QUEUE -Ofast -Ofair --concurrency=1
