@@ -21,4 +21,4 @@ ENV QUEUE=compute-worker
     WORKER=worker
 
 # Run it
-CMD celery -A $WORKER $WORKER -l info -Q $QUEUE -n $QUEUE -Ofast -Ofair --concurrency=1
+CMD celery worker -A $WORKER -l info -Q $QUEUE -n $QUEUE -Ofast -Ofair --concurrency=1

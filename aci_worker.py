@@ -21,13 +21,12 @@ import yaml
 
 from os.path import join, exists
 from glob import glob
-from subprocess import Popen, call, check_output, CalledProcessError, PIPE
+from subprocess import Popen, call, check_output, CalledProcessError
 from zipfile import ZipFile
 
-from billiard import SoftTimeLimitExceeded
+from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Celery, task
 
-# from celery.app import app_or_default
 
 app = Celery('worker')
 app.config_from_object('celeryconfig')
@@ -84,22 +83,6 @@ def do_docker_pull(image_name, task_id, secret):
             'traceback': error.output,
             'metadata': error.returncode
         })
-
-
-# def docker_get_size():
-#     return os.popen("docker system df | awk -v x=4 'FNR == 2 {print $x}'").read().strip()
-#
-#
-# def docker_prune():
-#     """Runs a prune on docker if our images take up more than what's defined in settings."""
-#     # May also use docker system df --format "{{.Size}}"
-#     image_size = docker_get_size()
-#     image_size_measurement = image_size[-2:]
-#     image_size = float(image_size[:-2])
-#
-#     if image_size > settings.DOCKER_MAX_SIZE_GB and image_size_measurement == "GB":
-#         logger.info("Pruning")
-#         os.system("docker system prune --force")
 
 
 def get_bundle(root_dir, relative_dir, url):
