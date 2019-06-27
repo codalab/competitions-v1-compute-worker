@@ -32,7 +32,8 @@ from billiard import SoftTimeLimitExceeded
 from celery import Celery, task
 
 # from celery.app import app_or_default
-from celery.signals import celeryd_init, worker_init
+from celeryconfig import BROKER_URL
+from celery.signals import worker_process_init
 
 app = Celery('worker')
 app.config_from_object('celeryconfig')
@@ -40,6 +41,104 @@ app.config_from_object('celeryconfig')
 logger = logging.getLogger()
 # Stop duplicate log entries in Celery
 logger.propagate = False
+
+
+
+
+def register_worker(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost, virtual_host='/'):
+    logger.info("Registering worker id = {}, ip = {}, cpu_count = {}, mem_mb = {}, harddrive_gb = {}, gpus = {}".format(
+        worker_id,
+        ip,
+        cpu_count,
+        mem_mb,
+        harddrive_gb,
+        gpus,
+        queue_vhost,
+    ))
+    with app.connection() as new_connection:
+        # We need to send on the main virtual host, not whatever host we're currently
+        # connected to.
+        new_connection.virtual_host = virtual_host
+        app.send_task(
+            'apps.web.tasks.register_worker',
+            args=(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue),
+            connection=new_connection,
+            queue="submission-updates",
+        )
+
+
+def worker_job_started(worker_id, submission_secret, is_scoring, virtual_host='/'):
+    logger.info("Starting job worker id = {}, submission_secret = {}, is_scoring = {}".format(
+        worker_id,
+        submission_secret,
+        is_scoring,
+    ))
+    with app.connection() as new_connection:
+        # We need to send on the main virtual host, not whatever host we're currently
+        # connected to.
+        new_connection.virtual_host = virtual_host
+        app.send_task(
+            'apps.web.tasks.worker_job_started',
+            args=(worker_id, submission_secret, is_scoring),
+            connection=new_connection,
+            queue="submission-updates",
+        )
+
+
+def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/'):
+    logger.info("Ending job worker id = {}, submission_secret = {}, is_scoring = {}".format(
+        worker_id,
+        submission_secret,
+        is_scoring,
+    ))
+    with app.connection() as new_connection:
+        # We need to send on the main virtual host, not whatever host we're currently
+        # connected to.
+        new_connection.virtual_host = virtual_host
+        app.send_task(
+            'apps.web.tasks.worker_job_ended',
+            args=(worker_id, submission_secret, is_scoring),
+            connection=new_connection,
+            queue="submission-updates",
+        )
+
+
+def _get_worker_id():
+    # Save worker ID or get existing
+    if not os.path.exists('.worker_registration'):
+        logger.info("Doing first time worker configuration")
+        worker_id = str(uuid.uuid4())
+        worker_conf_filename = '.worker_registration'
+        with open(worker_conf_filename, 'w') as worker_info:
+            worker_info.write(worker_id)
+        logger.info("Wrote id = '{}' to '{}'".format(worker_id, worker_conf_filename))
+    else:
+        worker_id = open('.worker_registration', 'r').read()
+        logger.info("Found existing worker id: {}".format(worker_id))
+    return worker_id
+
+
+WORKER_ID = _get_worker_id()
+
+
+@worker_process_init.connect()
+def configure_workers(sender=None, conf=None, **kwargs):
+    # print("INIT configure workers")
+    try:
+        gpus = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+    except:  # nivida-smi not found TODO: Replace with valid exceptions...!
+        gpus = 0
+
+    # We can execute this over and over, so long as we use the same WORKER_ID shouldn't make a duplicate
+    register_worker(
+        WORKER_ID,
+        requests.get("https://api.ipify.org").text,
+        multiprocessing.cpu_count(),
+        get_available_memory(),
+        psutil.disk_usage('/').total / (1024.0 ** 3),
+        gpus,
+        BROKER_URL.split('/')[-1]  # Only send vhost
+    )
 
 
 def _find_only_folder_with_metadata(path):
@@ -274,6 +373,8 @@ def run(task_id, task_args):
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     cache_dir = os.environ.get('SUBMISSION_CACHE_DIR', '/tmp/cache')
     root_dir = None
+
+    worker_job_started(WORKER_ID, secret, is_scoring_step)
 
     do_docker_pull(docker_image, task_id, secret)
 
@@ -738,6 +839,8 @@ def run(task_id, task_args):
         put_blob(stdout_url, stdout_file)
         put_blob(stderr_url, stderr_file)
 
+        worker_job_ended(WORKER_ID, secret, is_scoring_step)
+
         if run_ingestion_program:
             ingestion_stdout.close()
             ingestion_stderr.close()
@@ -817,6 +920,7 @@ def run(task_id, task_args):
             'traceback': traceback.format_exc(),
             'metadata': debug_metadata
         })
+        worker_job_ended(WORKER_ID, secret, is_scoring_step)
 
     # comment out for dev and viewing of raw folder outputs.
     if root_dir is not None and not os.environ.get("DONT_FINALIZE_SUBMISSION"):
@@ -833,95 +937,3 @@ def run(task_id, task_args):
     if cache_size_in_gb >= cache_size_limit_in_gb:
         logger.info("Clearing cache directory!")
         shutil.rmtree(cache_dir, ignore_errors=True)
-
-
-def register_worker(worker_id, cpu_count, mem_mb, harddrive_gb, gpus, virtual_host='/'):
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.register_worker',
-            args=(worker_id, cpu_count, mem_mb, harddrive_gb, gpus),
-            connection=new_connection,
-            queue="submission-updates",
-        )
-
-
-def worker_job_started(worker_id, submission_secret, is_scoring, virtual_host='/'):
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.worker_job_started',
-            args=(worker_id, submission_secret, is_scoring),
-            connection=new_connection,
-            queue="submission-updates",
-        )
-
-
-def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/'):
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.worker_job_ended',
-            args=(worker_id, submission_secret, is_scoring),
-            connection=new_connection,
-            queue="submission-updates",
-        )
-
-
-# @celeryd_init.connect
-# def configure_workers(sender=None, conf=None, **kwargs):
-#     print("INIT configure workers")
-#     # Save worker ID or get existing
-#     if not os.path.exists('.worker_registration'):
-#         logger.info("UHH IM HERE!! INIT!")
-#         print("Saving worker information and registering")
-#         WORKER_ID = str(uuid.uuid4())
-#         with open('.worker_registration', 'w') as worker_info:
-#             worker_info.write(WORKER_ID)
-#     else:
-#         WORKER_ID = open('.worker_registration', 'r').read()
-#
-#     try:
-#         gpus = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
-#     except:  # nivida-smi not found TODO: Replace with valid exceptions...!
-#         gpus = 0
-#
-#     register_worker(
-#         WORKER_ID,
-#         multiprocessing.cpu_count(),
-#         get_available_memory(),
-#         psutil.disk_usage('/').total / (1024.0 ** 3),
-#         gpus,
-#     )
-
-@worker_init.connect
-def configure_workers(sender=None, conf=None, **kwargs):
-    print("INIT configure workers")
-    # Save worker ID or get existing
-    if not os.path.exists('.worker_registration'):
-        logger.info("UHH IM HERE!! INIT!")
-        print("Saving worker information and registering")
-        WORKER_ID = str(uuid.uuid4())
-        with open('.worker_registration', 'w') as worker_info:
-            worker_info.write(WORKER_ID)
-    else:
-        WORKER_ID = open('.worker_registration', 'r').read()
-
-    try:
-        gpus = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
-    except:  # nivida-smi not found TODO: Replace with valid exceptions...!
-        gpus = 0
-
-    register_worker(
-        WORKER_ID,
-        multiprocessing.cpu_count(),
-        get_available_memory(),
-        psutil.disk_usage('/').total / (1024.0 ** 3),
-        gpus,
-    )
