@@ -22,10 +22,23 @@ import yaml
 from os.path import join, exists
 from glob import glob
 from subprocess import Popen, call, check_output, CalledProcessError
+from multiprocessing import Process
 from zipfile import ZipFile
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Celery, task
+
+from cloudhunky.aci_worker import ACIWorker
+from cloudhunky.util import get_afs_creds
+
+#Config Azure ACI worker
+resource_group_name = "ACI"
+aci_worker = ACIWorker(resource_group_name)
+volume_mount_path = "/input"
+afs_creds = get_afs_creds()
+afs_name = afs_creds["AFS_NAME"]
+afs_key = afs_creds["AFS_KEY"]
+afs_share = afs_creds["AFS_SHARE"]
 
 
 app = Celery('worker')
@@ -295,17 +308,14 @@ def run(task_id, task_args):
         # Create temporary directories for the run
         root_dir = tempfile.mkdtemp(dir=temp_dir)
         os.chmod(root_dir, 0o777)
-
         run_dir = join(root_dir, 'run')
         shared_dir = tempfile.mkdtemp(dir=temp_dir)
         hidden_ref_dir = ''
 
         # Fetch and stage the bundles
-        logger.info("Fetching bundles...")
         start = time.time()
-
+        logger.info("Fetching bundles...")
         bundles = get_bundle(root_dir, 'run', bundle_url)
-
         # If we were passed hidden data, move it
         if is_predict_step:
             hidden_ref_original_location = join(run_dir, 'hidden_ref')
@@ -316,9 +326,9 @@ def run(task_id, task_args):
                 hidden_ref_dir = join(temp_dir, 'hidden_ref')
 
         logger.info("Metadata: %s" % bundles)
-
         end = time.time() - start
         logger.info("Fetched bundles in %s", end)
+
         # Verify we have an input folder: create one if it's not in the bundle.
         input_rel_path = 'input'
         input_dir = join(root_dir, 'run', 'input')
@@ -326,11 +336,11 @@ def run(task_id, task_args):
             if os.path.exists(input_dir) == False:
                 os.mkdir(input_dir)
                 os.chmod(input_dir, 0o777)
+
         # Verify we have a program
         prog_rel_path = 'program'
         if prog_rel_path not in bundles:
             raise Exception("Program bundle is not available.")
-
         ingestion_prog_info = None
         if 'ingestion_program' in bundles:
             ingestion_prog_info = bundles['ingestion_program']
@@ -338,7 +348,6 @@ def run(task_id, task_args):
                 raise Exception(
                     "Ingestion program is missing metadata. Make sure the folder structure is "
                     "appropriate (metadata not in a subdirectory).")
-
         logger.info("Ingestion program: {}".format(ingestion_prog_info))
 
         # Look for submission/scoring program metadata, if we're scoring -- otherwise ingestion
@@ -346,7 +355,6 @@ def run(task_id, task_args):
         prog_info = bundles[prog_rel_path] or {}
         if prog_info is None and is_scoring_step:
             raise Exception("Program metadata is not available.")
-
         prog_cmd_list = []
         if 'command' in prog_info:
             if isinstance(prog_info['command'], type([])):
@@ -402,7 +410,6 @@ def run(task_id, task_args):
         exit_code = None
         ingestion_program_exit_code = None
         available_memory_mib = get_available_memory()
-
         logger.info("Available memory: {}MB".format(available_memory_mib))
 
         # If our program command list is empty and we're not scoring, we probably got a result submission
@@ -482,41 +489,57 @@ def run(task_id, task_args):
                     .replace("\\", os.path.sep)
                 prog_cmd = prog_cmd.split(' ')
                 eval_container_name = uuid.uuid4()
-                docker_cmd = [
-                    'docker',
-                    'run',
-                    # Remove it after run
-                    '--rm',
-                    # Give it a name we have stored as a variable
-                    '--name={}'.format(eval_container_name),
-                    # Try the new timeout feature
-                    '--stop-timeout={}'.format(execution_time_limit),
-                    # Don't allow subprocesses to raise privileges
-                    '--security-opt=no-new-privileges',
-                    # Set the right volume
-                    '-v', '{0}:{0}'.format(run_dir),
-                    '-v', '{0}:{0}'.format(shared_dir),
-                    # Set aside 512m memory for the host
-                    '--memory', '{}MB'.format(available_memory_mib - 512),
-                    # Don't buffer python output, so we don't lose any
-                    '-e', 'PYTHONUNBUFFERED=1',
-                    # Set current working directory
-                    '-w', run_dir,
-                    # Set container runtime
-                    '--runtime', docker_runtime,
-                    # Note that hidden data dir is excluded here!
-                    # Set the right image
-                    docker_image,
-                ]
-                prog_cmd = docker_cmd + prog_cmd
-                logger.info("Invoking program: %s", " ".join(prog_cmd))
-                evaluator_process = Popen(
-                    prog_cmd,
-                    stdout=stdout,
-                    stderr=stderr,
-                    # env=os.environ,
-                    # cwd=join(run_dir, 'program')
-                )
+                # docker_cmd = [
+                #     'docker',
+                #     'run',
+                #     # Remove it after run
+                #     '--rm',
+                #     # Give it a name we have stored as a variable
+                #     '--name={}'.format(eval_container_name),
+                #     # Try the new timeout feature
+                #     '--stop-timeout={}'.format(execution_time_limit),
+                #     # Don't allow subprocesses to raise privileges
+                #     '--security-opt=no-new-privileges',
+                #     # Set the right volume
+                #     '-v', '{0}:{0}'.format(run_dir),
+                #     '-v', '{0}:{0}'.format(shared_dir),
+                #     # Set aside 512m memory for the host
+                #     '--memory', '{}MB'.format(available_memory_mib - 512),
+                #     # Don't buffer python output, so we don't lose any
+                #     '-e', 'PYTHONUNBUFFERED=1',
+                #     # Set current working directory
+                #     '-w', run_dir,
+                #     # Set container runtime
+                #     '--runtime', docker_runtime,
+                #     # Note that hidden data dir is excluded here!
+                #     # Set the right image
+                #     docker_image,
+                # ]
+
+                # prog_cmd = docker_cmd + prog_cmd
+                logger.info("Invoking ACI container with cmd: %s", " ".join(prog_cmd))
+                envs = {'PYTHONUNBUFFERED': 1}
+                # TODO: working dir, stop-timeout
+                aci_worker.run_task_based_container(
+                    container_image_name=docker_image,
+                    command=prog_cmd,
+                    cpu=2.0,
+                    memory_in_gb=8,
+                    gpu_count=1,
+                    envs=envs,
+                    volume_mount_path=volume_mount_path,
+                    afs_name=afs_name,
+                    afs_key=afs_key,
+                    afs_share=afs_share,
+                    afs_mount_subpath='')
+
+                # evaluator_process = Popen(
+                #     prog_cmd,
+                #     stdout=stdout,
+                #     stderr=stderr,
+                #     # env=os.environ,
+                #     # cwd=join(run_dir, 'program')
+                # )
 
                 # We're running a program, not just result submission, so we should keep an eye on detailed results
                 if detailed_results_url:
@@ -554,45 +577,57 @@ def run(task_id, task_args):
                     .replace("\\", os.path.sep)
                 ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
                 ingestion_container_name = uuid.uuid4()
-                ingestion_docker_cmd = [
-                    'docker',
-                    'run',
-                    # Remove it after run
-                    '--rm',
-                    # Give it a name we have stored as a variable
-                    '--name={}'.format(ingestion_container_name),
-                    # Try the new timeout feature
-                    '--stop-timeout={}'.format(execution_time_limit),
-                    # Don't allow subprocesses to raise privileges
-                    '--security-opt=no-new-privileges',
-                    # Set the right volume
-                    '-v', '{0}:{0}'.format(run_dir),
-                    '-v', '{0}:{0}'.format(shared_dir),
-                    '-v', '{0}:{0}'.format(hidden_ref_dir),
-                    # Set aside 512m memory for the host
-                    '--memory', '{}MB'.format(available_memory_mib - 512),
-                    # Add the participants submission dir to PYTHONPATH
-                    '-e',
-                    'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
-                    '-e', 'PYTHONUNBUFFERED=1',
-                    # Set current working directory to submission dir
-                    '-w', run_dir,
-                    # Set container runtime
-                    '--runtime', docker_runtime,
-                    # Set the right image
-                    ingestion_program_docker_image,
-                ]
-                ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
+                # ingestion_docker_cmd = [
+                #     'docker',
+                #     'run',
+                #     # Remove it after run
+                #     '--rm',
+                #     # Give it a name we have stored as a variable
+                #     '--name={}'.format(ingestion_container_name),
+                #     # Try the new timeout feature
+                #     '--stop-timeout={}'.format(execution_time_limit),
+                #     # Don't allow subprocesses to raise privileges
+                #     '--security-opt=no-new-privileges',
+                #     # Set the right volume
+                #     '-v', '{0}:{0}'.format(run_dir),
+                #     '-v', '{0}:{0}'.format(shared_dir),
+                #     '-v', '{0}:{0}'.format(hidden_ref_dir),
+                #     # Set aside 512m memory for the host
+                #     '--memory', '{}MB'.format(available_memory_mib - 512),
+                #     # Add the participants submission dir to PYTHONPATH
+                #     '-e',
+                #     'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
+                #     '-e', 'PYTHONUNBUFFERED=1',
+                #     # Set current working directory to submission dir
+                #     '-w', run_dir,
+                #     # Set container runtime
+                #     '--runtime', docker_runtime,
+                #     # Set the right image
+                #     ingestion_program_docker_image,
+                # ]
+                # ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
                 logger.error(ingestion_prog_cmd)
                 logger.info("Invoking ingestion program: %s",
                             " ".join(ingestion_prog_cmd))
-                ingestion_process = Popen(
-                    ingestion_prog_cmd,
-                    stdout=ingestion_stdout,
-                    stderr=ingestion_stderr,
-                    # cwd=join(run_dir, 'ingestion_program')
-                )
+                # ingestion_process = Popen(
+                #     ingestion_prog_cmd,
+                #     stdout=ingestion_stdout,
+                #     stderr=ingestion_stderr,
+                #     # cwd=join(run_dir, 'ingestion_program')
+                # )
+                aci_worker.run_task_based_container(
+                    container_image_name=ingestion_program_docker_image,
+                    command=prog_cmd,
+                    cpu=2.0,
+                    memory_in_gb=8,
+                    gpu_count=1,
+                    envs=envs,
+                    volume_mount_path=volume_mount_path,
+                    afs_name=afs_name,
+                    afs_key=afs_key,
+                    afs_share=afs_share,
+                    afs_mount_subpath='')
             else:
                 ingestion_process = None
 

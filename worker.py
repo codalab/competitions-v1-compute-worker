@@ -24,7 +24,7 @@ from glob import glob
 from subprocess import Popen, call, check_output, CalledProcessError, PIPE
 from zipfile import ZipFile
 
-from billiard import SoftTimeLimitExceeded
+from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Celery, task
 
 # from celery.app import app_or_default

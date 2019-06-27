@@ -4,7 +4,7 @@ FROM python:3
 RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~debian/' | sh
 
 # Install entr which is a file watching library
-RUN apt-get install entr
+RUN apt-get install -y entr git
 
 # Move into our worker directory, so we're not in /
 WORKDIR /worker/
@@ -12,13 +12,15 @@ WORKDIR /worker/
 # Install Python stuff we need to listen to the queue
 COPY requirements.txt /worker/requirements.txt
 RUN pip install -r requirements.txt
+RUN git clone https://github.com/igormusinov/cloud-hunky
+RUN pip install -e ./cloud-hunky
 
 # Copy our actual code
 COPY *.py /worker/
 COPY detailed_result_put.sh /worker/
 
 ENV QUEUE=compute-worker
-    WORKER=worker
+ENV WORKER=worker
 
 # Run it
 CMD celery worker -A $WORKER -l info -Q $QUEUE -n $QUEUE -Ofast -Ofair --concurrency=1
