@@ -34,14 +34,13 @@ from cloudhunky.util import get_afs_creds
 #Config Azure ACI worker
 resource_group_name = "ACI"
 aci_worker = ACIWorker(resource_group_name)
-volume_mount_path = "/input"
 afs_creds = get_afs_creds()
 afs_name = afs_creds["AFS_NAME"]
 afs_key = afs_creds["AFS_KEY"]
 afs_share = afs_creds["AFS_SHARE"]
 
 
-app = Celery('worker')
+app = Celery('aci_compute_worker')
 app.config_from_object('celeryconfig')
 
 logger = logging.getLogger()
@@ -221,7 +220,7 @@ def alarm_handler(signum, frame):
     raise ExecutionTimeLimitExceeded
 
 
-@task(name="compute_worker_run")
+@task(name="aci_compute_worker")
 def run_wrapper(task_id, task_args):
     try:
         run(task_id, task_args)
@@ -289,8 +288,6 @@ def run(task_id, task_args):
         "end_swap_memory_usage": None,
         "end_cpu_usage": None,
     }
-
-    # docker_prune()
 
     try:
         # Cleanup dir in case any processes didn't clean up properly
@@ -487,7 +484,7 @@ def run(task_id, task_args):
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                prog_cmd = prog_cmd.split(' ')
+                # prog_cmd = prog_cmd.split(' ')
                 eval_container_name = uuid.uuid4()
                 # docker_cmd = [
                 #     'docker',
@@ -520,6 +517,7 @@ def run(task_id, task_args):
                 logger.info("Invoking ACI container with cmd: %s", " ".join(prog_cmd))
                 envs = {'PYTHONUNBUFFERED': 1}
                 # TODO: working dir, stop-timeout
+                prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && "+prog_cmd]
                 aci_worker.run_task_based_container(
                     container_image_name=docker_image,
                     command=prog_cmd,
@@ -527,7 +525,7 @@ def run(task_id, task_args):
                     memory_in_gb=8,
                     gpu_count=1,
                     envs=envs,
-                    volume_mount_path=volume_mount_path,
+                    volume_mount_path=temp_dir,
                     afs_name=afs_name,
                     afs_key=afs_key,
                     afs_share=afs_share,
@@ -575,7 +573,7 @@ def run(task_id, task_args):
                     .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
+                # ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
                 ingestion_container_name = uuid.uuid4()
                 # ingestion_docker_cmd = [
                 #     'docker',
@@ -616,14 +614,15 @@ def run(task_id, task_args):
                 #     stderr=ingestion_stderr,
                 #     # cwd=join(run_dir, 'ingestion_program')
                 # )
+                ingestion_prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && " + prog_cmd]
                 aci_worker.run_task_based_container(
                     container_image_name=ingestion_program_docker_image,
-                    command=prog_cmd,
+                    command=ingestion_prog_cmd,
                     cpu=2.0,
                     memory_in_gb=8,
                     gpu_count=1,
                     envs=envs,
-                    volume_mount_path=volume_mount_path,
+                    volume_mount_path=temp_dir,
                     afs_name=afs_name,
                     afs_key=afs_key,
                     afs_share=afs_share,
@@ -720,6 +719,8 @@ def run(task_id, task_args):
             if timed_out or exit_code != 0 or ingestion_program_exit_code != 0:
                 # Submission failed somewhere in here, bomb out
                 break
+
+        #END FOR
 
         stdout.close()
         stderr.close()
