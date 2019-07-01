@@ -32,7 +32,6 @@ from billiard import SoftTimeLimitExceeded
 from celery import Celery, task
 
 # from celery.app import app_or_default
-from celeryconfig import BROKER_URL
 from celery.signals import worker_process_init
 
 app = Celery('worker')
@@ -49,7 +48,7 @@ logger.propagate = False
 
 
 def register_worker(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost, virtual_host='/'):
-    logger.info("Registering worker id = {}, ip = {}, cpu_count = {}, mem_mb = {}, harddrive_gb = {}, gpus = {}".format(
+    logger.info("Registering worker id = {}, ip = {}, cpu_count = {}, mem_mb = {}, harddrive_gb = {}, gpus = {}, queue_vhost = {}".format(
         worker_id,
         ip,
         cpu_count,
@@ -64,7 +63,7 @@ def register_worker(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_
         new_connection.virtual_host = virtual_host
         app.send_task(
             'apps.web.tasks.register_worker',
-            args=(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue),
+            args=(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost),
             connection=new_connection,
             queue="submission-updates",
         )
@@ -132,6 +131,13 @@ def configure_workers(sender=None, conf=None, **kwargs):
     except:  # nivida-smi not found TODO: Replace with valid exceptions...!
         gpus = 0
 
+    # Get vhost from broker_url
+    broker_url = str(app.conf.BROKER_URL)
+    if broker_url.endswith('//'):
+        queue_vhost = '/'
+    else:
+        queue_vhost = broker_url.split('/')[-1]
+
     # We can execute this over and over, so long as we use the same WORKER_ID shouldn't make a duplicate
     register_worker(
         WORKER_ID,
@@ -140,7 +146,7 @@ def configure_workers(sender=None, conf=None, **kwargs):
         get_available_memory(),
         psutil.disk_usage('/').total / (1024.0 ** 3),
         gpus,
-        BROKER_URL.split('/')[-1]  # Only send vhost
+        queue_vhost
     )
 
 
