@@ -22,7 +22,7 @@ RUN apt-get install entr -y
 WORKDIR /worker/
 
 # Install Python stuff we need to listen to the queue
-RUN apt-get install python-pip -y
+RUN apt-get update && apt-get install python-pip git -y --fix-missing
 RUN pip install -U pip
 COPY requirements.txt /worker/requirements.txt
 RUN pip install -r requirements.txt

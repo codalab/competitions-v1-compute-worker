@@ -1,5 +1,9 @@
-celery==3.1.26.post2
+celery==4.3.0
 requests==1.2.3
 PyYAML==3.10
 psutil==2.1.1
-amqp==5.0.0a1
+#amqp==5.0.0a1
+# Working off of amqp master for now, needs to be set to an explicit version after release.
+# "Drain events" problem is resolved here
+# Last checked July 2, 2019
+git+git://github.com/celery/py-amqp.git

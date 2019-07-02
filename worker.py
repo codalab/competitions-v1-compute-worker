@@ -29,10 +29,9 @@ from subprocess import Popen, call, check_output, CalledProcessError, PIPE
 from zipfile import ZipFile, BadZipfile
 
 from billiard import SoftTimeLimitExceeded
-from celery import Celery, task
+from celery import Celery, task, signals
 
 # from celery.app import app_or_default
-from celery.signals import worker_process_init
 
 app = Celery('worker')
 app.config_from_object('celeryconfig')
@@ -43,8 +42,6 @@ app.conf.worker_prefetch_multiplier = 1
 logger = logging.getLogger()
 # Stop duplicate log entries in Celery
 logger.propagate = False
-
-
 
 
 def register_worker(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost, virtual_host='/'):
@@ -107,23 +104,27 @@ def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/')
 
 def _get_worker_id():
     # Save worker ID or get existing
-    if not os.path.exists('.worker_registration'):
-        logger.info("Doing first time worker configuration")
-        worker_id = str(uuid.uuid4())
-        worker_conf_filename = '.worker_registration'
-        with open(worker_conf_filename, 'w') as worker_info:
-            worker_info.write(worker_id)
-        logger.info("Wrote id = '{}' to '{}'".format(worker_id, worker_conf_filename))
-    else:
+    if os.path.exists('.worker_registration'):
         worker_id = open('.worker_registration', 'r').read()
-        logger.info("Found existing worker id: {}".format(worker_id))
+
+        if worker_id:
+            logger.info("Found existing worker id: {}".format(worker_id))
+            return worker_id
+
+    # File could exist but is empty, write to it just in case
+    logger.info("Doing first time worker configuration")
+    worker_id = str(uuid.uuid4())
+    worker_conf_filename = '.worker_registration'
+    with open(worker_conf_filename, 'w') as worker_info:
+        worker_info.write(worker_id)
+    logger.info("Wrote id = '{}' to '{}'".format(worker_id, worker_conf_filename))
     return worker_id
 
 
 WORKER_ID = _get_worker_id()
 
 
-@worker_process_init.connect()
+@signals.celeryd_after_setup.connect()
 def configure_workers(sender=None, conf=None, **kwargs):
     # print("INIT configure workers")
     try:
