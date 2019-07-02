@@ -9,6 +9,7 @@ Running
 mkdir -p /tmp/codalab && nvidia-docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
+    -v ./.worker_registration:/worker/.worker_registration \
     -v /tmp/codalab:/tmp/codalab \
     -d \
     --name compute_worker \
@@ -30,6 +31,7 @@ Make sure the temp directory you select is created and pass it in this command
 nvidia-docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
+    -v ./.worker_registration:/worker/.worker_registration \
     -v /tmp/codalab:/tmp/codalab \
     -d \
     --name compute_worker \
