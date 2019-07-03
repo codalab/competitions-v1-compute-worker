@@ -104,8 +104,8 @@ def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/')
 
 def _get_worker_id():
     # Save worker ID or get existing
-    if os.path.exists('.worker_registration'):
-        worker_id = open('.worker_registration', 'r').read()
+    if os.path.exists('/worker/registration/.worker_registration'):
+        worker_id = open('/worker/registration/.worker_registration', 'r').read()
 
         if worker_id:
             logger.info("Found existing worker id: {}".format(worker_id))
@@ -114,7 +114,7 @@ def _get_worker_id():
     # File could exist but is empty, write to it just in case
     logger.info("Doing first time worker configuration")
     worker_id = str(uuid.uuid4())
-    worker_conf_filename = '.worker_registration'
+    worker_conf_filename = '/worker/registration/.worker_registration'
     with open(worker_conf_filename, 'w') as worker_info:
         worker_info.write(worker_id)
     logger.info("Wrote id = '{}' to '{}'".format(worker_id, worker_conf_filename))
