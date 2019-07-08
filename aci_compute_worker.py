@@ -41,6 +41,7 @@ afs_share = afs_creds["AFS_SHARE"]
 
 
 app = Celery('aci_compute_worker')
+# main_host_app = Celery('aci_compute_worker', broker=os.environ.get('MAIN_BROKER_URL'))
 app.config_from_object('celeryconfig')
 
 logger = logging.getLogger()
@@ -72,29 +73,29 @@ def docker_image_clean(image_name):
     # If any not allowed are found, replaced with second argument to sub.
     image_name = re.sub('[^0-9a-zA-Z/.:-]+', '', image_name)
     return image_name
-
-
-def get_available_memory():
-    """Get available memory in megabytes"""
-    mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
-    mem_mib = mem_bytes / (1024. ** 2)
-    return int(mem_mib)
-
-
-def do_docker_pull(image_name, task_id, secret):
-    logger.info("Running docker pull for image: {}".format(image_name))
-    try:
-        cmd = ['docker', 'pull', image_name]
-        docker_pull = check_output(cmd)
-        logger.info("Docker pull complete for image: {0} with output of {1}".format(
-            image_name, docker_pull))
-    except CalledProcessError as error:
-        logger.info("Docker pull for image: {} returned a non-zero exit code!")
-
-        _send_update(task_id, 'failed', secret, extra={
-            'traceback': error.output,
-            'metadata': error.returncode
-        })
+#
+#
+# def get_available_memory():
+#     """Get available memory in megabytes"""
+#     mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+#     mem_mib = mem_bytes / (1024. ** 2)
+#     return int(mem_mib)
+#
+#
+# def do_docker_pull(image_name, task_id, secret):
+#     logger.info("Running docker pull for image: {}".format(image_name))
+#     try:
+#         cmd = ['docker', 'pull', image_name]
+#         docker_pull = check_output(cmd)
+#         logger.info("Docker pull complete for image: {0} with output of {1}".format(
+#             image_name, docker_pull))
+#     except CalledProcessError as error:
+#         logger.info("Docker pull for image: {} returned a non-zero exit code!")
+#
+#         _send_update(task_id, 'failed', secret, extra={
+#             'traceback': error.output,
+#             'metadata': error.returncode
+#         })
 
 
 def get_bundle(root_dir, relative_dir, url):
@@ -113,10 +114,11 @@ def get_bundle(root_dir, relative_dir, url):
     retries = 0
     while retries < 3:
         try:
-            urllib.urlretrieve(url, bundle_file.name)
+            urllib.request.urlretrieve(url, bundle_file.name)
             break
-        except:
+        except Exception as e:
             retries += 1
+            print(e)
 
     # Extracting files or grabbing extras
     bundle_path = join(root_dir, relative_dir)
@@ -135,7 +137,10 @@ def get_bundle(root_dir, relative_dir, url):
                 "get_bundle :: Found a submission with an extra folder, unpacking and moving up a directory")
             # Make a temp dir and copy data there
             temp_folder_name = join(root_dir, "%s%s" % (relative_dir, '_tmp'))
-            shutil.copytree(metadata_folder, temp_folder_name)
+            try:
+                shutil.copytree(metadata_folder, temp_folder_name)
+            except shutil.Error as e:
+                print(e)
 
             # Delete old dir, move copied data back
             shutil.rmtree(bundle_path, ignore_errors=True)
@@ -192,6 +197,8 @@ def _send_update(task_id, status, secret, virtual_host='/', extra=None):
         # We need to send on the main virtual host, not whatever host we're currently
         # connected to.
         new_connection.virtual_host = virtual_host
+        new_connection.userid = 'guest'
+        new_connection.password = 'guest'
         app.send_task(
             'apps.web.tasks.update_submission',
             args=(task_id, task_args, secret),
@@ -220,7 +227,7 @@ def alarm_handler(signum, frame):
     raise ExecutionTimeLimitExceeded
 
 
-@task(name="aci_compute_worker")
+@task(name="compute_worker_run")
 def run_wrapper(task_id, task_args):
     try:
         run(task_id, task_args)
@@ -256,14 +263,15 @@ def run(task_id, task_args):
     secret = task_args['secret']
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
+    mounted_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
     docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
 
-    do_docker_pull(docker_image, task_id, secret)
+    # do_docker_pull(docker_image, task_id, secret)
 
-    if not docker_image == ingestion_program_docker_image:
-        # If the images are the same only do one
-        do_docker_pull(ingestion_program_docker_image, task_id, secret)
+    # if not docker_image == ingestion_program_docker_image:
+    #     # If the images are the same only do one
+    #     do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
         logger.info("Task is prediction.")
@@ -406,7 +414,7 @@ def run(task_id, task_args):
         timed_out = False
         exit_code = None
         ingestion_program_exit_code = None
-        available_memory_mib = get_available_memory()
+        available_memory_mib = 4000 #get_available_memory()
         logger.info("Available memory: {}MB".format(available_memory_mib))
 
         # If our program command list is empty and we're not scoring, we probably got a result submission
@@ -471,8 +479,8 @@ def run(task_id, task_args):
                 open(default_detailed_result_path, 'a').close()
                 os.chmod(default_detailed_result_path, 0o777)
 
-            evaluator_process = None
-            detailed_result_process = None
+            # evaluator_process = None
+            # detailed_result_process = None
             if prog_cmd:
                 # Update command-line with the real paths
                 prog_cmd = prog_cmd \
@@ -514,18 +522,20 @@ def run(task_id, task_args):
                 # ]
 
                 # prog_cmd = docker_cmd + prog_cmd
-                logger.info("Invoking ACI container with cmd: %s", " ".join(prog_cmd))
                 envs = {'PYTHONUNBUFFERED': 1}
                 # TODO: working dir, stop-timeout
                 prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && "+prog_cmd]
+                logger.info("Invoking ACI container with cmd: %s", " ".join(prog_cmd))
                 aci_worker.run_task_based_container(
                     container_image_name=docker_image,
-                    command=prog_cmd,
+                    # command=prog_cmd,
+                    command=["/bin/bash", "-c", "sleep 1000000"],
                     cpu=2.0,
                     memory_in_gb=8,
-                    gpu_count=1,
+                    gpu_count=0,
                     envs=envs,
-                    volume_mount_path=temp_dir,
+                    volume_mount_path=mounted_dir,
+                    timeout=3,
                     afs_name=afs_name,
                     afs_key=afs_key,
                     afs_share=afs_share,
@@ -606,8 +616,6 @@ def run(task_id, task_args):
                 # ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
                 logger.error(ingestion_prog_cmd)
-                logger.info("Invoking ingestion program: %s",
-                            " ".join(ingestion_prog_cmd))
                 # ingestion_process = Popen(
                 #     ingestion_prog_cmd,
                 #     stdout=ingestion_stdout,
@@ -615,6 +623,8 @@ def run(task_id, task_args):
                 #     # cwd=join(run_dir, 'ingestion_program')
                 # )
                 ingestion_prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && " + prog_cmd]
+                logger.info("Invoking ingestion program: %s",
+                            " ".join(ingestion_prog_cmd))
                 aci_worker.run_task_based_container(
                     container_image_name=ingestion_program_docker_image,
                     command=ingestion_prog_cmd,
@@ -622,7 +632,7 @@ def run(task_id, task_args):
                     memory_in_gb=8,
                     gpu_count=1,
                     envs=envs,
-                    volume_mount_path=temp_dir,
+                    volume_mount_path=mounted_dir,
                     afs_name=afs_name,
                     afs_key=afs_key,
                     afs_share=afs_share,
@@ -630,71 +640,73 @@ def run(task_id, task_args):
             else:
                 ingestion_process = None
 
-            if evaluator_process:
-                logger.info("Started process, pid=%s" % evaluator_process.pid)
-
-            if evaluator_process or ingestion_process:
-                # Only if a program is running do these checks, otherwise infinite loop checking nothing!
-                time_difference = time.time() - startTime
-                signal.signal(signal.SIGALRM, alarm_handler)
-                signal.alarm(
-                    int(math.fabs(math.ceil(execution_time_limit - time_difference))))
-
-                logger.info("Checking process, exit_code = %s" % exit_code)
-
-                try:
-                    # While either program is running and hasn't exited, continue polling
-                    while (evaluator_process and exit_code == None) or (
-                            ingestion_process and ingestion_program_exit_code == None):
-                        time.sleep(1)
-
-                        if evaluator_process and exit_code is None:
-                            exit_code = evaluator_process.poll()
-
-                        if ingestion_process and ingestion_program_exit_code is None:
-                            ingestion_program_exit_code = ingestion_process.poll()
-                except (ValueError, OSError):
-                    pass  # tried to communicate with dead process
-                except ExecutionTimeLimitExceeded:
-                    logger.info("Killed process for running too long!")
-                    stderr.write("Execution time limit exceeded!")
-
-                    if evaluator_process:
-                        exit_code = -1
-                        evaluator_process.kill()
-                        call(['docker', 'kill', '{}'.format(eval_container_name)])
-                    if ingestion_process:
-                        ingestion_program_exit_code = -1
-                        ingestion_process.kill()
-                        call(
-                            ['docker', 'kill', '{}'.format(ingestion_container_name)])
-                    if detailed_result_process:
-                        detailed_result_process.kill()
-
-                    timed_out = True
-
-                signal.alarm(0)
-
-                if evaluator_process:
-                    logger.info("Exit Code regular process: %d", exit_code)
-                if ingestion_process:
-                    logger.info("Exit Code ingestion process: %d",
-                                ingestion_program_exit_code)
-                    debug_metadata[
-                        'ingestion_program_duration'] = time.time() - ingestion_program_start_time
-
-                if detailed_result_process:
-                    detailed_result_process.kill()
-            else:
-                # let code down below know everything went OK
-                exit_code = 0
-                ingestion_program_exit_code = 0
+            # if evaluator_process:
+            #     logger.info("Started process, pid=%s" % evaluator_process.pid)
+            #
+            # if evaluator_process or ingestion_process:
+            #     # Only if a program is running do these checks, otherwise infinite loop checking nothing!
+            #     time_difference = time.time() - startTime
+            #     signal.signal(signal.SIGALRM, alarm_handler)
+            #     signal.alarm(
+            #         int(math.fabs(math.ceil(execution_time_limit - time_difference))))
+            #
+            #     logger.info("Checking process, exit_code = %s" % exit_code)
+            #
+            #     try:
+            #         # While either program is running and hasn't exited, continue polling
+            #         while (evaluator_process and exit_code == None) or (
+            #                 ingestion_process and ingestion_program_exit_code == None):
+            #             time.sleep(1)
+            #
+            #             if evaluator_process and exit_code is None:
+            #                 exit_code = evaluator_process.poll()
+            #
+            #             if ingestion_process and ingestion_program_exit_code is None:
+            #                 ingestion_program_exit_code = ingestion_process.poll()
+            #     except (ValueError, OSError):
+            #         pass  # tried to communicate with dead process
+            #     except ExecutionTimeLimitExceeded:
+            #         logger.info("Killed process for running too long!")
+            #         stderr.write("Execution time limit exceeded!")
+            #
+            #         if evaluator_process:
+            #             exit_code = -1
+            #             evaluator_process.kill()
+            #             call(['docker', 'kill', '{}'.format(eval_container_name)])
+            #         if ingestion_process:
+            #             ingestion_program_exit_code = -1
+            #             ingestion_process.kill()
+            #             call(
+            #                 ['docker', 'kill', '{}'.format(ingestion_container_name)])
+            #         if detailed_result_process:
+            #             detailed_result_process.kill()
+            #
+            #         timed_out = True
+            #
+            #     signal.alarm(0)
+            #
+            #     if evaluator_process:
+            #         logger.info("Exit Code regular process: %d", exit_code)
+            #     if ingestion_process:
+            #         logger.info("Exit Code ingestion process: %d",
+            #                     ingestion_program_exit_code)
+            #         debug_metadata[
+            #             'ingestion_program_duration'] = time.time() - ingestion_program_start_time
+            #
+            #     if detailed_result_process:
+            #         detailed_result_process.kill()
+            # else:
+            #     # let code down below know everything went OK
+            #     exit_code = 0
+            #     ingestion_program_exit_code = 0
 
             # Set exit codes to 0 so task is marked as finished
-            if not evaluator_process:
-                exit_code = 0
-            if not ingestion_process:
-                ingestion_program_exit_code = 0
+            # if not evaluator_process:
+            #     exit_code = 0
+            # if not ingestion_process:
+            #     ingestion_program_exit_code = 0
+            exit_code = 0
+            ingestion_program_exit_code = 0
 
             endTime = time.time()
             elapsedTime = endTime - startTime
