@@ -27,6 +27,9 @@ from zipfile import ZipFile
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Celery, task
 
+import util
+import docker_util
+
 # from celery.app import app_or_default
 
 app = Celery('worker')
@@ -35,143 +38,6 @@ app.config_from_object('celeryconfig')
 logger = logging.getLogger()
 # Stop duplicate log entries in Celery
 logger.propagate = False
-
-
-def _find_only_folder_with_metadata(path):
-    """Looks through a bundle for a single folder that contains a metadata file and
-    returns that folder's name if found"""
-    files_in_path = os.listdir(path)
-    if len(files_in_path) > 2 and 'metadata' in files_in_path:
-        # We see more than a couple files OR metadata in this folder, leave
-        return None
-    for f in files_in_path:
-        # Find first folder
-        folder = os.path.join(path, f)
-        if os.path.isdir(folder):
-            # Check if it contains a metadata file
-            if 'metadata' in os.listdir(folder):
-                return folder
-
-
-def docker_image_clean(image_name):
-    # Remove all excess whitespaces on edges, split on spaces and grab the first word.
-    # Wraps in double quotes so bash cannot interpret as an exec
-    image_name = '"{}"'.format(image_name.strip().split(' ')[0])
-    # Regex acts as a whitelist here. Only alphanumerics and the following symbols are allowed: / . : -.
-    # If any not allowed are found, replaced with second argument to sub.
-    image_name = re.sub('[^0-9a-zA-Z/.:-]+', '', image_name)
-    return image_name
-
-
-def get_available_memory():
-    """Get available memory in megabytes"""
-    mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
-    mem_mib = mem_bytes / (1024. ** 2)
-    return int(mem_mib)
-
-
-def do_docker_pull(image_name, task_id, secret):
-    logger.info("Running docker pull for image: {}".format(image_name))
-    try:
-        cmd = ['docker', 'pull', image_name]
-        docker_pull = check_output(cmd)
-        logger.info("Docker pull complete for image: {0} with output of {1}".format(image_name, docker_pull))
-    except CalledProcessError as error:
-        logger.info("Docker pull for image: {} returned a non-zero exit code!")
-
-        _send_update(task_id, 'failed', secret, extra={
-            'traceback': error.output,
-            'metadata': error.returncode
-        })
-
-
-# def docker_get_size():
-#     return os.popen("docker system df | awk -v x=4 'FNR == 2 {print $x}'").read().strip()
-#
-#
-# def docker_prune():
-#     """Runs a prune on docker if our images take up more than what's defined in settings."""
-#     # May also use docker system df --format "{{.Size}}"
-#     image_size = docker_get_size()
-#     image_size_measurement = image_size[-2:]
-#     image_size = float(image_size[:-2])
-#
-#     if image_size > settings.DOCKER_MAX_SIZE_GB and image_size_measurement == "GB":
-#         logger.info("Pruning")
-#         os.system("docker system prune --force")
-
-
-def get_bundle(root_dir, relative_dir, url):
-    # get file name from /test.zip?signature=!@#a/df
-    url_without_params = url.split('?')[0]
-    file_name = url_without_params.split('/')[-1]
-    file_ext = os.path.splitext(file_name)[1]
-
-    logger.debug("get_bundle :: Getting %s from %s" % (file_name, url))
-
-    # Save the bundle to a temp file
-    # file_download_path = os.path.join(root_dir, file_name)
-    bundle_file = tempfile.NamedTemporaryFile(prefix='tmp', suffix=file_ext, dir=root_dir, delete=False)
-
-    retries = 0
-    while retries < 3:
-        try:
-            urllib.urlretrieve(url, bundle_file.name)
-            break
-        except:
-            retries += 1
-
-    # Extracting files or grabbing extras
-    bundle_path = join(root_dir, relative_dir)
-    metadata_path = join(bundle_path, 'metadata')
-
-    if file_ext == '.zip':
-        logger.info("get_bundle :: Unzipping %s" % bundle_file.name)
-        # Unzip file to relative dir, if a zip
-        with ZipFile(bundle_file.file, 'r') as z:
-            z.extractall(bundle_path)
-
-        # check if we just unzipped something containing a folder and nothing else
-        metadata_folder = _find_only_folder_with_metadata(bundle_path)
-        if metadata_folder:
-            logger.info("get_bundle :: Found a submission with an extra folder, unpacking and moving up a directory")
-            # Make a temp dir and copy data there
-            temp_folder_name = join(root_dir, "%s%s" % (relative_dir, '_tmp'))
-            shutil.copytree(metadata_folder, temp_folder_name)
-
-            # Delete old dir, move copied data back
-            shutil.rmtree(bundle_path, ignore_errors=True)
-            shutil.move(temp_folder_name, bundle_path)
-
-        # any zips we see should be unzipped to a folder with the name of the file
-        for zip_file in glob(join(bundle_path, "*.zip")):
-            name_without_extension = os.path.splitext(zip_file)[0]
-            with ZipFile(join(bundle_path, zip_file), 'r') as z:
-                z.extractall(join(bundle_path, name_without_extension))
-    else:
-        # Otherwise we have some metadata type file, like run.txt containing other bundles to fetch.
-        os.mkdir(bundle_path)
-        shutil.copyfile(bundle_file.name, metadata_path)
-
-    os.chmod(bundle_path, 0o777)
-
-    # Check for metadata containing more bundles to fetch
-    metadata = None
-    if os.path.exists(metadata_path):
-        logger.info("get_bundle :: Fetching extra files specified in metadata for {}".format(metadata_path))
-        with open(metadata_path) as mf:
-            metadata = yaml.load(mf)
-
-    if isinstance(metadata, dict):
-        for (k, v) in metadata.items():
-            if k not in ("description", "command", "exitCode", "elapsedTime", "stdout", "stderr", "submitted-by", "submitted-at"):
-                if isinstance(v, str):
-                    logger.debug("get_bundle :: Fetching recursive bundle %s %s %s" % (bundle_path, k, v))
-                    # Here K is the relative directory and V is the url, like
-                    # input: http://test.com/goku?sas=123
-                    metadata[k] = get_bundle(bundle_path, k, v)
-    return metadata
-
 
 def _send_update(task_id, status, secret, virtual_host='/', extra=None):
     """
@@ -183,11 +49,13 @@ def _send_update(task_id, status, secret, virtual_host='/', extra=None):
     task_args = {'status': status}
     if extra:
         task_args['extra'] = extra
-    logger.info("Updating task=%s status to %s", task_id, status)
+    logging.info("Updating task=%s status to %s", task_id, status)
     with app.connection() as new_connection:
         # We need to send on the main virtual host, not whatever host we're currently
         # connected to.
         new_connection.virtual_host = virtual_host
+        new_connection.userid = 'guest'
+        new_connection.password = 'guest'
         app.send_task(
             'apps.web.tasks.update_submission',
             args=(task_id, task_args, secret),
@@ -195,25 +63,6 @@ def _send_update(task_id, status, secret, virtual_host='/', extra=None):
             queue="submission-updates",
         )
 
-
-def put_blob(url, file_path):
-    logger.info("Putting blob %s in %s" % (file_path, url))
-    requests.put(
-        url,
-        data=open(file_path, 'rb'),
-        headers={
-            'x-ms-blob-type': 'BlockBlob',
-            'x-ms-version': '2018-03-28',
-        }
-    )
-
-
-class ExecutionTimeLimitExceeded(Exception):
-    pass
-
-
-def alarm_handler(signum, frame):
-    raise ExecutionTimeLimitExceeded
 
 
 @task(name="compute_worker_run")
@@ -233,9 +82,9 @@ def run(task_id, task_args):
     """
     logger.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
     # run_id = task_args['bundle_id']
-    docker_image = docker_image_clean(task_args['docker_image'])
+    docker_image = docker_util.docker_image_clean(task_args['docker_image'])
     bundle_url = task_args['bundle_url']
-    ingestion_program_docker_image = docker_image_clean(task_args['ingestion_program_docker_image'])
+    ingestion_program_docker_image = docker_util.docker_image_clean(task_args['ingestion_program_docker_image'])
     stdout_url = task_args['stdout_url']
     stderr_url = task_args['stderr_url']
     ingestion_program_stderr_url = task_args['ingestion_program_stderr_url']
@@ -254,11 +103,11 @@ def run(task_id, task_args):
     root_dir = None
     docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
 
-    do_docker_pull(docker_image, task_id, secret)
+    docker_util.do_docker_pull(docker_image, task_id, secret)
 
     if not docker_image == ingestion_program_docker_image:
         # If the images are the same only do one
-        do_docker_pull(ingestion_program_docker_image, task_id, secret)
+        docker_util.do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
         logger.info("Task is prediction.")
@@ -310,7 +159,7 @@ def run(task_id, task_args):
         logger.info("Fetching bundles...")
         start = time.time()
 
-        bundles = get_bundle(root_dir, 'run', bundle_url)
+        bundles = util.get_bundle(root_dir, 'run', bundle_url)
 
         # If we were passed hidden data, move it
         if is_predict_step:
@@ -404,7 +253,7 @@ def run(task_id, task_args):
         timed_out = False
         exit_code = None
         ingestion_program_exit_code = None
-        available_memory_mib = get_available_memory()
+        available_memory_mib = util.get_available_memory()
 
         logger.info("Available memory: {}MB".format(available_memory_mib))
 
@@ -596,7 +445,7 @@ def run(task_id, task_args):
             if evaluator_process or ingestion_process:
                 # Only if a program is running do these checks, otherwise infinite loop checking nothing!
                 time_difference = time.time() - startTime
-                signal.signal(signal.SIGALRM, alarm_handler)
+                signal.signal(signal.SIGALRM, util.alarm_handler)
                 signal.alarm(int(math.fabs(math.ceil(execution_time_limit - time_difference))))
 
                 logger.info("Checking process, exit_code = %s" % exit_code)
@@ -613,7 +462,7 @@ def run(task_id, task_args):
                             ingestion_program_exit_code = ingestion_process.poll()
                 except (ValueError, OSError):
                     pass  # tried to communicate with dead process
-                except ExecutionTimeLimitExceeded:
+                except util.ExecutionTimeLimitExceeded:
                     logger.info("Killed process for running too long!")
                     stderr.write("Execution time limit exceeded!")
 
@@ -680,28 +529,28 @@ def run(task_id, task_args):
 
         logger.info("Saving output files")
 
-        put_blob(stdout_url, stdout_file)
-        put_blob(stderr_url, stderr_file)
+        util.put_blob(stdout_url, stdout_file)
+        util.put_blob(stderr_url, stderr_file)
 
         if run_ingestion_program:
             ingestion_stdout.close()
             ingestion_stderr.close()
-            put_blob(ingestion_program_output_url, ingestion_stdout_file)
-            put_blob(ingestion_program_stderr_url, ingestion_stderr_file)
+            util.put_blob(ingestion_program_output_url, ingestion_stdout_file)
+            util.put_blob(ingestion_program_stderr_url, ingestion_stderr_file)
 
         private_dir = join(output_dir, 'private')
         if os.path.exists(private_dir):
             logger.info("Packing private results...")
             private_output_file = join(root_dir, 'run', 'private_output.zip')
             shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip', output_dir)
-            put_blob(private_output_url, private_output_file)
+            util.put_blob(private_output_url, private_output_file)
             shutil.rmtree(private_dir, ignore_errors=True)
 
         # Pack results and send them to Blob storage
         logger.info("Packing results...")
         output_file = join(root_dir, 'run', 'output.zip')
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
-        put_blob(output_url, output_file)
+        util.put_blob(output_url, output_file)
 
 
         if detailed_results_url:
@@ -722,7 +571,7 @@ def run(task_id, task_args):
                             file_to_upload = os.path.join(root,file)
                             file_ext = os.path.splitext(file_to_upload)[1]
                             if file_ext.lower() == ".html":
-                                put_blob(detailed_results_url, file_to_upload)
+                                util.put_blob(detailed_results_url, file_to_upload)
                                 html_found = True
                     else:
                         break
