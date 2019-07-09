@@ -1,8 +1,7 @@
 import re
 import logging
-
 from subprocess import check_output, CalledProcessError
-from aci_compute_worker import _send_update
+
 
 
 def docker_image_clean(image_name):
@@ -17,15 +16,8 @@ def docker_image_clean(image_name):
 
 def do_docker_pull(image_name, task_id, secret):
     logging.info("Running docker pull for image: {}".format(image_name))
-    try:
-        cmd = ['docker', 'pull', image_name]
-        docker_pull = check_output(cmd)
-        logging.info("Docker pull complete for image: {0} with output of {1}".format(
-            image_name, docker_pull))
-    except CalledProcessError as error:
-        logging.info("Docker pull for image: {} returned a non-zero exit code!")
+    cmd = ['docker', 'pull', image_name]
+    docker_pull = check_output(cmd)
+    logging.info("Docker pull complete for image: {0} with output of {1}".format(
+        image_name, docker_pull))
 
-        _send_update(task_id, 'failed', secret, extra={
-            'traceback': error.output,
-            'metadata': error.returncode
-        })

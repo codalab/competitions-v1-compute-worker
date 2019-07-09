@@ -1,5 +1,6 @@
 import os
 import urllib
+import urllib.request
 import tempfile
 import logging
 import requests
@@ -56,8 +57,8 @@ def get_bundle(root_dir, relative_dir, url):
             print(e)
 
     # Extracting files or grabbing extras
-    bundle_path = os.join(root_dir, relative_dir)
-    metadata_path = os.join(bundle_path, 'metadata')
+    bundle_path = os.path.join(root_dir, relative_dir)
+    metadata_path = os.path.join(bundle_path, 'metadata')
 
     if file_ext == '.zip':
         logging.info("get_bundle :: Unzipping %s" % bundle_file.name)

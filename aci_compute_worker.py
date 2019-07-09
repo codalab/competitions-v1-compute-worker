@@ -12,13 +12,13 @@ import tempfile
 import logging
 from subprocess import Popen
 
-from celery import Celery, task
 from billiard.exceptions import SoftTimeLimitExceeded
 
 from cloudhunky.aci_worker import ACIWorker
 from cloudhunky.util import get_afs_creds
 
-from worker import run as local_run
+from celerymain import worker, app
+from worker import local_run
 import util
 import docker_util
 
@@ -30,48 +30,18 @@ afs_name = afs_creds["AFS_NAME"]
 afs_key = afs_creds["AFS_KEY"]
 afs_share = afs_creds["AFS_SHARE"]
 
-app = Celery('aci_compute_worker')
-# main_host_app = Celery('aci_compute_worker', broker=os.environ.get('MAIN_BROKER_URL'))
-app.config_from_object('celeryconfig')
-
-# logging = logging.getlogging()
-# Stop duplicate log entries in Celery
-# logging.propagate = False
-
-def _send_update(task_id, status, secret, virtual_host='/', extra=None):
-    """
-    Sends a status update about the running task.
-
-    id: The task ID.
-    status: The new status for the task. One of 'running', 'finished' or 'failed'.
-    """
-    task_args = {'status': status}
-    if extra:
-        task_args['extra'] = extra
-    logging.info("Updating task=%s status to %s", task_id, status)
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        new_connection.userid = 'guest'
-        new_connection.password = 'guest'
-        app.send_task(
-            'apps.web.tasks.update_submission',
-            args=(task_id, task_args, secret),
-            connection=new_connection,
-            queue="submission-updates",
-        )
-
-
-@task(name="compute_worker_run")
+@app.task(name="compute_worker_run")
 def run_wrapper(task_id, task_args):
     try:
-        run(task_id, task_args)
+        if task_args.get("predict", False):
+            aci_run(worker, task_id, task_args)
+        else:
+            local_run(worker, task_id, task_args)
     except SoftTimeLimitExceeded:
-        _send_update(app, task_id, {'status': 'failed'}, task_args['secret'])
+        worker._send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
 
-def run(task_id, task_args):
+def aci_run(worker, task_id, task_args):
     """
     Performs a Run.
 
@@ -96,8 +66,6 @@ def run(task_id, task_args):
     # container = task_args['container_name']
     is_predict_step = task_args.get("predict", False)
     is_scoring_step = not is_predict_step
-    if is_scoring_step:
-        return local_run(task_id, task_args)
     secret = task_args['secret']
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
@@ -144,14 +112,14 @@ def run(task_id, task_args):
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path, ignore_errors=True)
 
-        _send_update(task_id, 'running', secret, extra={
+        worker._send_update(task_id, 'running', secret, extra={
             'metadata': debug_metadata
         })
 
         # Create temporary directories for the run
         root_dir = tempfile.mkdtemp(dir=temp_dir)
         os.chmod(root_dir, 0o777)
-        run_dir = os.join(root_dir, 'run')
+        run_dir = os.path.join(root_dir, 'run')
         shared_dir = tempfile.mkdtemp(dir=temp_dir)
         hidden_ref_dir = ''
 
@@ -161,12 +129,12 @@ def run(task_id, task_args):
         bundles = util.get_bundle(root_dir, 'run', bundle_url)
         # If we were passed hidden data, move it
         if is_predict_step:
-            hidden_ref_original_location = os.join(run_dir, 'hidden_ref')
-            if os.exists(hidden_ref_original_location):
+            hidden_ref_original_location = os.path.join(run_dir, 'hidden_ref')
+            if os.path.exists(hidden_ref_original_location):
                 logging.info(
                     "Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
                 shutil.move(hidden_ref_original_location, temp_dir)
-                hidden_ref_dir = os.join(temp_dir, 'hidden_ref')
+                hidden_ref_dir = os.path.join(temp_dir, 'hidden_ref')
 
         logging.info("Metadata: %s" % bundles)
         end = time.time() - start
@@ -174,7 +142,7 @@ def run(task_id, task_args):
 
         # Verify we have an input folder: create one if it's not in the bundle.
         input_rel_path = 'input'
-        input_dir = os.join(root_dir, 'run', 'input')
+        input_dir = os.path.join(root_dir, 'run', 'input')
         if input_rel_path not in bundles:
             if os.path.exists(input_dir) == False:
                 os.mkdir(input_dir)
@@ -208,12 +176,12 @@ def run(task_id, task_args):
             raise Exception("Program command is not specified.")
 
         # Create output folder
-        output_dir = os.join(root_dir, 'run', 'output')
+        output_dir = os.path.join(root_dir, 'run', 'output')
         if os.path.exists(output_dir) == False:
             os.mkdir(output_dir)
             os.chmod(output_dir, 0o777)
         # Create temp folder
-        temp_dir = os.join(root_dir, 'run', 'temp')
+        temp_dir = os.path.join(root_dir, 'run', 'temp')
         if os.path.exists(temp_dir) == False:
             os.mkdir(temp_dir)
             os.chmod(temp_dir, 0o777)
@@ -231,14 +199,14 @@ def run(task_id, task_args):
             stdout_file_name = 'stdout.txt'
             stderr_file_name = 'stderr.txt'
 
-        stdout_file = os.join(run_dir, stdout_file_name)
-        stderr_file = os.join(run_dir, stderr_file_name)
+        stdout_file = os.path.join(run_dir, stdout_file_name)
+        stderr_file = os.path.join(run_dir, stderr_file_name)
         stdout = open(stdout_file, "a+")
         stderr = open(stderr_file, "a+")
         prog_status = []
 
-        ingestion_stdout_file = os.join(run_dir, 'ingestion_stdout_file.txt')
-        ingestion_stderr_file = os.join(run_dir, 'ingestion_stderr_file.txt')
+        ingestion_stdout_file = os.path.join(run_dir, 'ingestion_stdout_file.txt')
+        ingestion_stderr_file = os.path.join(run_dir, 'ingestion_stderr_file.txt')
         ingestion_stdout = open(ingestion_stdout_file, "a+")
         ingestion_stderr = open(ingestion_stderr_file, "a+")
         ingestion_program_start_time = None
@@ -270,8 +238,8 @@ def run(task_id, task_args):
 
                 # Check that we should even be running this submission in a special way, may
                 # just be results..
-                submission_path = os.join(run_dir, "program")
-                metadata_path = os.join(submission_path, "metadata")
+                submission_path = os.path.join(run_dir, "program")
+                metadata_path = os.path.join(submission_path, "metadata")
 
                 # If a metadata file is found, assume this is a code submission
                 is_code_submission = os._exists(metadata_path)
@@ -322,11 +290,11 @@ def run(task_id, task_args):
             if prog_cmd:
                 # Update command-line with the real paths
                 prog_cmd = prog_cmd \
-                    .replace("$program", os.join(run_dir, 'program')) \
-                    .replace("$predictions", os.join(run_dir, 'input', 'res')) \
-                    .replace("$input", os.join(run_dir, 'input')) \
-                    .replace("$output", os.join(run_dir, 'output')) \
-                    .replace("$tmp", os.join(run_dir, 'temp')) \
+                    .replace("$program", os.path.join(run_dir, 'program')) \
+                    .replace("$predictions", os.path.join(run_dir, 'input', 'res')) \
+                    .replace("$input", os.path.join(run_dir, 'input')) \
+                    .replace("$output", os.path.join(run_dir, 'output')) \
+                    .replace("$tmp", os.path.join(run_dir, 'temp')) \
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
@@ -363,7 +331,8 @@ def run(task_id, task_args):
                 envs = {'PYTHONUNBUFFERED': 1}
                 # TODO: working dir, stop-timeout
                 prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && " + prog_cmd]
-                logging.info("Invoking ACI container with cmd: %s", " ".join(prog_cmd))
+                logging.info("Invoking ACI container with cmd: %s",
+                             " ".join(prog_cmd))
                 aci_worker.run_task_based_container(
                     container_image_name=docker_image,
                     command=prog_cmd,
@@ -396,7 +365,7 @@ def run(task_id, task_args):
                         str(default_detailed_result_path)
                     ]
                     logging.info("Detailed results watcher program: %s",
-                                " ".join(detailed_result_watcher_args))
+                                 " ".join(detailed_result_watcher_args))
                     detailed_result_process = Popen(detailed_result_watcher_args)
 
             if run_ingestion_program:
@@ -410,13 +379,14 @@ def run(task_id, task_args):
 
                 # ingestion_run_dir = join(run_dir, 'ingestion')
                 ingestion_prog_cmd = ingestion_prog_cmd \
-                    .replace("$program", os.join(run_dir, 'ingestion_program')) \
-                    .replace("$ingestion_program", os.join(run_dir, 'ingestion_program')) \
-                    .replace("$submission_program", os.join(run_dir, 'program')) \
-                    .replace("$predictions", os.join(run_dir, 'input', 'res')) \
-                    .replace("$input", os.join(run_dir, 'input')) \
-                    .replace("$output", os.join(run_dir, 'output')) \
-                    .replace("$tmp", os.join(run_dir, 'temp')) \
+                    .replace("$program", os.path.join(run_dir, 'ingestion_program')) \
+                    .replace("$ingestion_program",
+                             os.path.join(run_dir, 'ingestion_program')) \
+                    .replace("$submission_program", os.path.join(run_dir, 'program')) \
+                    .replace("$predictions", os.path.join(run_dir, 'input', 'res')) \
+                    .replace("$input", os.path.join(run_dir, 'input')) \
+                    .replace("$output", os.path.join(run_dir, 'output')) \
+                    .replace("$tmp", os.path.join(run_dir, 'temp')) \
                     .replace("$shared", shared_dir) \
                     .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
@@ -463,7 +433,7 @@ def run(task_id, task_args):
                 ingestion_prog_cmd = ["/bin/bash", "-c",
                                       f"cd {run_dir} && " + prog_cmd]
                 logging.info("Invoking ingestion program: %s",
-                            " ".join(ingestion_prog_cmd))
+                             " ".join(ingestion_prog_cmd))
                 aci_worker.run_task_based_container(
                     container_image_name=ingestion_program_docker_image,
                     command=ingestion_prog_cmd,
@@ -564,7 +534,7 @@ def run(task_id, task_args):
                     'ingestionExitCode': ingestion_program_exit_code,
                     'elapsedTime': elapsedTime
                 })
-            with open(os.join(output_dir, 'metadata'), 'a+') as f:
+            with open(os.path.join(output_dir, 'metadata'), 'a+') as f:
                 f.write(yaml.dump(prog_status, default_flow_style=False))
 
             if timed_out or exit_code != 0 or ingestion_program_exit_code != 0:
@@ -587,10 +557,10 @@ def run(task_id, task_args):
             util.put_blob(ingestion_program_output_url, ingestion_stdout_file)
             util.put_blob(ingestion_program_stderr_url, ingestion_stderr_file)
 
-        private_dir = os.join(output_dir, 'private')
+        private_dir = os.path.join(output_dir, 'private')
         if os.path.exists(private_dir):
             logging.info("Packing private results...")
-            private_output_file = os.join(root_dir, 'run', 'private_output.zip')
+            private_output_file = os.path.join(root_dir, 'run', 'private_output.zip')
             shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip',
                                 output_dir)
             util.put_blob(private_output_url, private_output_file)
@@ -598,7 +568,7 @@ def run(task_id, task_args):
 
         # Pack results and send them to Blob storage
         logging.info("Packing results...")
-        output_file = os.join(root_dir, 'run', 'output.zip')
+        output_file = os.path.join(root_dir, 'run', 'output.zip')
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         util.put_blob(output_url, output_file)
 
@@ -635,17 +605,17 @@ def run(task_id, task_args):
         # check if timed out AFTER output files are written! If we exit sooner, no output is written
         if timed_out:
             logging.exception("Run task timed out (task_id=%s).", task_id)
-            _send_update(task_id, 'failed', secret, extra={
+            worker._send_update(task_id, 'failed', secret, extra={
                 'metadata': debug_metadata
             })
         elif exit_code != 0 or ingestion_program_exit_code != 0:
             logging.exception("Run task exit code non-zero (task_id=%s).", task_id)
-            _send_update(task_id, 'failed', secret, extra={
+            worker._send_update(task_id, 'failed', secret, extra={
                 'traceback': open(stderr_file).read(),
                 'metadata': debug_metadata
             })
         else:
-            _send_update(task_id, 'finished', secret, extra={
+            worker._send_update(task_id, 'finished', secret, extra={
                 'metadata': debug_metadata
             })
     except Exception:
@@ -658,7 +628,7 @@ def run(task_id, task_args):
             debug_metadata["end_cpu_usage"] = psutil.cpu_percent(interval=None)
 
         logging.exception("Run task failed (task_id=%s).", task_id)
-        _send_update(task_id, 'failed', secret, extra={
+        worker._send_update(task_id, 'failed', secret, extra={
             'traceback': traceback.format_exc(),
             'metadata': debug_metadata
         })
@@ -671,4 +641,4 @@ def run(task_id, task_args):
             shutil.rmtree(root_dir, ignore_errors=True)
         except:
             logging.exception("Unable to clean-up local folder %s (task_id=%s)",
-                             root_dir, task_id)
+                              root_dir, task_id)

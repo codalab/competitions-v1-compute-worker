@@ -1,11 +1,9 @@
 #!/usr/bin/env python
-import urllib
-
 import json
 import logging.config
 import os
 import uuid
-
+import logging
 import psutil
 import signal
 import math
@@ -15,76 +13,40 @@ import socket
 import tempfile
 import time
 import traceback
-
-import requests
 import yaml
 
 from os.path import join, exists
-from glob import glob
-from subprocess import Popen, call, check_output, CalledProcessError, PIPE
-from zipfile import ZipFile
+from subprocess import Popen, call
+from subprocess import CalledProcessError
 
 from billiard.exceptions import SoftTimeLimitExceeded
-from celery import Celery, task
 
 import util
 import docker_util
-
-# from celery.app import app_or_default
-
-app = Celery('worker')
-app.config_from_object('celeryconfig')
-
-logger = logging.getLogger()
-# Stop duplicate log entries in Celery
-logger.propagate = False
-
-def _send_update(task_id, status, secret, virtual_host='/', extra=None):
-    """
-    Sends a status update about the running task.
-
-    id: The task ID.
-    status: The new status for the task. One of 'running', 'finished' or 'failed'.
-    """
-    task_args = {'status': status}
-    if extra:
-        task_args['extra'] = extra
-    logging.info("Updating task=%s status to %s", task_id, status)
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        new_connection.userid = 'guest'
-        new_connection.password = 'guest'
-        app.send_task(
-            'apps.web.tasks.update_submission',
-            args=(task_id, task_args, secret),
-            connection=new_connection,
-            queue="submission-updates",
-        )
+from celerymain import worker, app
 
 
-
-@task(name="compute_worker_run")
+@app.task(name="compute_worker_run")
 def run_wrapper(task_id, task_args):
     try:
-        run(task_id, task_args)
+        local_run(worker, task_id, task_args)
     except SoftTimeLimitExceeded:
-        _send_update(task_id, {'status': 'failed'}, task_args['secret'])
+        worker._send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
 
-def run(task_id, task_args):
+def local_run(worker, task_id, task_args):
     """
     Performs a Run.
 
     task_id: The tracking ID for this task.
     task_args: The input arguments for this task:
     """
-    logger.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
+    logging.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
     # run_id = task_args['bundle_id']
     docker_image = docker_util.docker_image_clean(task_args['docker_image'])
     bundle_url = task_args['bundle_url']
-    ingestion_program_docker_image = docker_util.docker_image_clean(task_args['ingestion_program_docker_image'])
+    ingestion_program_docker_image = docker_util.docker_image_clean(
+        task_args['ingestion_program_docker_image'])
     stdout_url = task_args['stdout_url']
     stderr_url = task_args['stderr_url']
     ingestion_program_stderr_url = task_args['ingestion_program_stderr_url']
@@ -103,16 +65,23 @@ def run(task_id, task_args):
     root_dir = None
     docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
 
-    docker_util.do_docker_pull(docker_image, task_id, secret)
+    try:
+        docker_util.do_docker_pull(docker_image, task_id, secret)
+    except CalledProcessError as error:
+        logging.info("Docker pull for image: {} returned a non-zero exit code!")
+        worker._send_update(task_id, 'failed', secret, extra={
+            'traceback': error.output,
+            'metadata': error.returncode
+        })
 
     if not docker_image == ingestion_program_docker_image:
         # If the images are the same only do one
         docker_util.do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
-        logger.info("Task is prediction.")
+        logging.info("Task is prediction.")
     else:
-        logger.info("Task is scoring.")
+        logging.info("Task is scoring.")
 
     running_processes = '<DISABLED>'
     debug_metadata = {
@@ -122,7 +91,8 @@ def run(task_id, task_args):
 
         "processes_running_in_temp_dir": running_processes,
 
-        "beginning_virtual_memory_usage": json.dumps(psutil.virtual_memory()._asdict()),
+        "beginning_virtual_memory_usage": json.dumps(
+            psutil.virtual_memory()._asdict()),
         "beginning_swap_memory_usage": json.dumps(psutil.swap_memory()._asdict()),
         "beginning_cpu_usage": psutil.cpu_percent(interval=None),
 
@@ -143,7 +113,7 @@ def run(task_id, task_args):
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path, ignore_errors=True)
 
-        _send_update(task_id, 'running', secret, extra={
+        worker._send_update(task_id, 'running', secret, extra={
             'metadata': debug_metadata
         })
 
@@ -156,7 +126,7 @@ def run(task_id, task_args):
         hidden_ref_dir = ''
 
         # Fetch and stage the bundles
-        logger.info("Fetching bundles...")
+        logging.info("Fetching bundles...")
         start = time.time()
 
         bundles = util.get_bundle(root_dir, 'run', bundle_url)
@@ -165,14 +135,15 @@ def run(task_id, task_args):
         if is_predict_step:
             hidden_ref_original_location = join(run_dir, 'hidden_ref')
             if exists(hidden_ref_original_location):
-                logger.info("Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
+                logging.info(
+                    "Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
                 shutil.move(hidden_ref_original_location, temp_dir)
                 hidden_ref_dir = join(temp_dir, 'hidden_ref')
 
-        logger.info("Metadata: %s" % bundles)
+        logging.info("Metadata: %s" % bundles)
 
         end = time.time() - start
-        logger.info("Fetched bundles in %s", end)
+        logging.info("Fetched bundles in %s", end)
         # Verify we have an input folder: create one if it's not in the bundle.
         input_rel_path = 'input'
         input_dir = join(root_dir, 'run', 'input')
@@ -189,10 +160,11 @@ def run(task_id, task_args):
         if 'ingestion_program' in bundles:
             ingestion_prog_info = bundles['ingestion_program']
             if not ingestion_prog_info:
-                raise Exception("Ingestion program is missing metadata. Make sure the folder structure is "
-                                "appropriate (metadata not in a subdirectory).")
+                raise Exception(
+                    "Ingestion program is missing metadata. Make sure the folder structure is "
+                    "appropriate (metadata not in a subdirectory).")
 
-        logger.info("Ingestion program: {}".format(ingestion_prog_info))
+        logging.info("Ingestion program: {}".format(ingestion_prog_info))
 
         # Look for submission/scoring program metadata, if we're scoring -- otherwise ingestion
         # program will handle the case where a code submission has no metadata.
@@ -224,7 +196,7 @@ def run(task_id, task_args):
         # Invoke custom evaluation program
         os.chdir(run_dir)
         os.environ["PATH"] += os.pathsep + run_dir + "/program"
-        logger.info("Execution directory: %s", run_dir)
+        logging.info("Execution directory: %s", run_dir)
 
         if is_predict_step:
             stdout_file_name = 'prediction_stdout_file.txt'
@@ -246,7 +218,8 @@ def run(task_id, task_args):
         ingestion_program_start_time = None
         ingestion_program_end_time = None
 
-        default_detailed_result_path = os.path.join(output_dir, 'detailed_results.html')
+        default_detailed_result_path = os.path.join(output_dir,
+                                                    'detailed_results.html')
 
         run_ingestion_program = False
 
@@ -255,7 +228,7 @@ def run(task_id, task_args):
         ingestion_program_exit_code = None
         available_memory_mib = util.get_available_memory()
 
-        logger.info("Available memory: {}MB".format(available_memory_mib))
+        logging.info("Available memory: {}MB".format(available_memory_mib))
 
         # If our program command list is empty and we're not scoring, we probably got a result submission
         if not prog_cmd_list and is_predict_step:
@@ -268,7 +241,7 @@ def run(task_id, task_args):
             # if given, run the code or move the results appropriately
 
             if is_predict_step:
-                logger.info("Doing ingestion program checks")
+                logging.info("Doing ingestion program checks")
 
                 # Check that we should even be running this submission in a special way, may
                 # just be results..
@@ -282,30 +255,36 @@ def run(task_id, task_args):
                 #     is_code_submission = "command" in submission_metadata.keys()
 
                 if is_code_submission:
-                    logger.info("We have a code submission!")
+                    logging.info("We have a code submission!")
 
                 # We're in prediction so use an ingestion program to process the submission.
                 # Was an ingestion program provided?
                 if is_code_submission and ingestion_prog_info:
-                    logger.info("Running organizer provided ingestion program and submission.")
+                    logging.info(
+                        "Running organizer provided ingestion program and submission.")
                     # Run ingestion program, run submission
                     run_ingestion_program = True
                 elif is_code_submission:
-                    logger.info("Running code submission like normal, no ingestion program provided.")
+                    logging.info(
+                        "Running code submission like normal, no ingestion program provided.")
                 else:
                     # We didn't find an ingestion program, let's use the following simple one
                     # that just executes the submission and moves results
-                    logger.info("No code submission, moving input directory to output.")
+                    logging.info(
+                        "No code submission, moving input directory to output.")
                     # This isn't a code submission, it is already ready to score. Remove
                     # old output directory and replace it with this submission's contents.
-                    logger.info("Removing output_dir: {}".format(output_dir))
+                    logging.info("Removing output_dir: {}".format(output_dir))
                     os.rmdir(output_dir)
-                    logger.info("Renaming submission_path: {} to old output_dir name {}".format(submission_path, output_dir))
+                    logging.info(
+                        "Renaming submission_path: {} to old output_dir name {}".format(
+                            submission_path, output_dir))
                     os.rename(submission_path, output_dir)
             else:
                 # During scoring we don't worry about sharing directories and such when using ingestion programs
                 if ingestion_prog_info:
-                    logger.info("Running organizer provided ingestion program for scoring")
+                    logging.info(
+                        "Running organizer provided ingestion program for scoring")
                     run_ingestion_program = True
 
             if detailed_results_url:
@@ -317,7 +296,7 @@ def run(task_id, task_args):
             detailed_result_process = None
             if prog_cmd:
                 # Update command-line with the real paths
-                prog_cmd = prog_cmd\
+                prog_cmd = prog_cmd \
                     .replace("$program", join(run_dir, 'program')) \
                     .replace("$predictions", join(run_dir, 'input', 'res')) \
                     .replace("$input", join(run_dir, 'input')) \
@@ -355,7 +334,7 @@ def run(task_id, task_args):
                     docker_image,
                 ]
                 prog_cmd = docker_cmd + prog_cmd
-                logger.info("Invoking program: %s", " ".join(prog_cmd))
+                logging.info("Invoking program: %s", " ".join(prog_cmd))
                 evaluator_process = Popen(
                     prog_cmd,
                     stdout=stdout,
@@ -372,20 +351,21 @@ def run(task_id, task_args):
                         str(detailed_results_url),
                         str(default_detailed_result_path)
                     ]
-                    logger.info("Detailed results watcher program: %s", " ".join(detailed_result_watcher_args))
+                    logging.info("Detailed results watcher program: %s",
+                                " ".join(detailed_result_watcher_args))
                     detailed_result_process = Popen(detailed_result_watcher_args)
-
 
             if run_ingestion_program:
                 if 'command' not in ingestion_prog_info:
-                    raise Exception("Ingestion program metadata was found, but is missing the 'command' attribute,"
-                                    "which is necessary to execute the ingestion program.")
+                    raise Exception(
+                        "Ingestion program metadata was found, but is missing the 'command' attribute,"
+                        "which is necessary to execute the ingestion program.")
                 ingestion_program_start_time = time.time()
 
                 ingestion_prog_cmd = ingestion_prog_info['command']
 
                 # ingestion_run_dir = join(run_dir, 'ingestion')
-                ingestion_prog_cmd = ingestion_prog_cmd\
+                ingestion_prog_cmd = ingestion_prog_cmd \
                     .replace("$program", join(run_dir, 'ingestion_program')) \
                     .replace("$ingestion_program", join(run_dir, 'ingestion_program')) \
                     .replace("$submission_program", join(run_dir, 'program')) \
@@ -417,7 +397,8 @@ def run(task_id, task_args):
                     # Set aside 512m memory for the host
                     '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Add the participants submission dir to PYTHONPATH
-                    '-e', 'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
+                    '-e',
+                    'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory to submission dir
                     '-w', run_dir,
@@ -428,8 +409,9 @@ def run(task_id, task_args):
                 ]
                 ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
-                logger.error(ingestion_prog_cmd)
-                logger.info("Invoking ingestion program: %s", " ".join(ingestion_prog_cmd))
+                logging.error(ingestion_prog_cmd)
+                logging.info("Invoking ingestion program: %s",
+                            " ".join(ingestion_prog_cmd))
                 ingestion_process = Popen(
                     ingestion_prog_cmd,
                     stdout=ingestion_stdout,
@@ -440,19 +422,21 @@ def run(task_id, task_args):
                 ingestion_process = None
 
             if evaluator_process:
-                logger.info("Started process, pid=%s" % evaluator_process.pid)
+                logging.info("Started process, pid=%s" % evaluator_process.pid)
 
             if evaluator_process or ingestion_process:
                 # Only if a program is running do these checks, otherwise infinite loop checking nothing!
                 time_difference = time.time() - startTime
                 signal.signal(signal.SIGALRM, util.alarm_handler)
-                signal.alarm(int(math.fabs(math.ceil(execution_time_limit - time_difference))))
+                signal.alarm(
+                    int(math.fabs(math.ceil(execution_time_limit - time_difference))))
 
-                logger.info("Checking process, exit_code = %s" % exit_code)
+                logging.info("Checking process, exit_code = %s" % exit_code)
 
                 try:
                     # While either program is running and hasn't exited, continue polling
-                    while (evaluator_process and exit_code == None) or (ingestion_process and ingestion_program_exit_code == None):
+                    while (evaluator_process and exit_code == None) or (
+                            ingestion_process and ingestion_program_exit_code == None):
                         time.sleep(1)
 
                         if evaluator_process and exit_code is None:
@@ -463,7 +447,7 @@ def run(task_id, task_args):
                 except (ValueError, OSError):
                     pass  # tried to communicate with dead process
                 except util.ExecutionTimeLimitExceeded:
-                    logger.info("Killed process for running too long!")
+                    logging.info("Killed process for running too long!")
                     stderr.write("Execution time limit exceeded!")
 
                     if evaluator_process:
@@ -473,7 +457,8 @@ def run(task_id, task_args):
                     if ingestion_process:
                         ingestion_program_exit_code = -1
                         ingestion_process.kill()
-                        call(['docker', 'kill', '{}'.format(ingestion_container_name)])
+                        call(
+                            ['docker', 'kill', '{}'.format(ingestion_container_name)])
                     if detailed_result_process:
                         detailed_result_process.kill()
 
@@ -482,10 +467,12 @@ def run(task_id, task_args):
                 signal.alarm(0)
 
                 if evaluator_process:
-                    logger.info("Exit Code regular process: %d", exit_code)
+                    logging.info("Exit Code regular process: %d", exit_code)
                 if ingestion_process:
-                    logger.info("Exit Code ingestion process: %d", ingestion_program_exit_code)
-                    debug_metadata['ingestion_program_duration'] = time.time() - ingestion_program_start_time
+                    logging.info("Exit Code ingestion process: %d",
+                                ingestion_program_exit_code)
+                    debug_metadata[
+                        'ingestion_program_duration'] = time.time() - ingestion_program_start_time
 
                 if detailed_result_process:
                     detailed_result_process.kill()
@@ -527,7 +514,7 @@ def run(task_id, task_args):
         stdout.close()
         stderr.close()
 
-        logger.info("Saving output files")
+        logging.info("Saving output files")
 
         util.put_blob(stdout_url, stdout_file)
         util.put_blob(stderr_url, stderr_file)
@@ -540,18 +527,18 @@ def run(task_id, task_args):
 
         private_dir = join(output_dir, 'private')
         if os.path.exists(private_dir):
-            logger.info("Packing private results...")
+            logging.info("Packing private results...")
             private_output_file = join(root_dir, 'run', 'private_output.zip')
-            shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip', output_dir)
+            shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip',
+                                output_dir)
             util.put_blob(private_output_url, private_output_file)
             shutil.rmtree(private_dir, ignore_errors=True)
 
         # Pack results and send them to Blob storage
-        logger.info("Packing results...")
+        logging.info("Packing results...")
         output_file = join(root_dir, 'run', 'output.zip')
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         util.put_blob(output_url, output_file)
-
 
         if detailed_results_url:
             detailed_result_data = open(default_detailed_result_path).read()
@@ -568,7 +555,7 @@ def run(task_id, task_args):
                     if not (html_found):
                         path = root.split('/')
                         for file in files:
-                            file_to_upload = os.path.join(root,file)
+                            file_to_upload = os.path.join(root, file)
                             file_ext = os.path.splitext(file_to_upload)[1]
                             if file_ext.lower() == ".html":
                                 util.put_blob(detailed_results_url, file_to_upload)
@@ -577,35 +564,39 @@ def run(task_id, task_args):
                         break
 
         # Save extra metadata
-        debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
-        debug_metadata["end_swap_memory_usage"] = json.dumps(psutil.swap_memory()._asdict())
+        debug_metadata["end_virtual_memory_usage"] = json.dumps(
+            psutil.virtual_memory()._asdict())
+        debug_metadata["end_swap_memory_usage"] = json.dumps(
+            psutil.swap_memory()._asdict())
         debug_metadata["end_cpu_usage"] = psutil.cpu_percent(interval=None)
 
         # check if timed out AFTER output files are written! If we exit sooner, no output is written
         if timed_out:
-            logger.exception("Run task timed out (task_id=%s).", task_id)
-            _send_update(task_id, 'failed', secret, extra={
+            logging.exception("Run task timed out (task_id=%s).", task_id)
+            worker._send_update(task_id, 'failed', secret, extra={
                 'metadata': debug_metadata
             })
         elif exit_code != 0 or ingestion_program_exit_code != 0:
-            logger.exception("Run task exit code non-zero (task_id=%s).", task_id)
-            _send_update(task_id, 'failed', secret, extra={
+            logging.exception("Run task exit code non-zero (task_id=%s).", task_id)
+            worker._send_update(task_id, 'failed', secret, extra={
                 'traceback': open(stderr_file).read(),
                 'metadata': debug_metadata
             })
         else:
-            _send_update(task_id, 'finished', secret, extra={
+            worker._send_update(task_id, 'finished', secret, extra={
                 'metadata': debug_metadata
             })
     except Exception:
         if debug_metadata['end_virtual_memory_usage'] == None:
             # We didnt' make it far enough to save end metadata... so do it!
-            debug_metadata["end_virtual_memory_usage"] = json.dumps(psutil.virtual_memory()._asdict())
-            debug_metadata["end_swap_memory_usage"] = json.dumps(psutil.swap_memory()._asdict())
+            debug_metadata["end_virtual_memory_usage"] = json.dumps(
+                psutil.virtual_memory()._asdict())
+            debug_metadata["end_swap_memory_usage"] = json.dumps(
+                psutil.swap_memory()._asdict())
             debug_metadata["end_cpu_usage"] = psutil.cpu_percent(interval=None)
 
-        logger.exception("Run task failed (task_id=%s).", task_id)
-        _send_update(task_id, 'failed', secret, extra={
+        logging.exception("Run task failed (task_id=%s).", task_id)
+        worker._send_update(task_id, 'failed', secret, extra={
             'traceback': traceback.format_exc(),
             'metadata': debug_metadata
         })
@@ -617,4 +608,5 @@ def run(task_id, task_args):
             os.chdir(current_dir)
             shutil.rmtree(root_dir, ignore_errors=True)
         except:
-            logger.exception("Unable to clean-up local folder %s (task_id=%s)", root_dir, task_id)
+            logging.exception("Unable to clean-up local folder %s (task_id=%s)",
+                             root_dir, task_id)
