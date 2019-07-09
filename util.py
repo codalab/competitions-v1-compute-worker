@@ -72,7 +72,7 @@ def get_bundle(root_dir, relative_dir, url):
             logging.info(
                 "get_bundle :: Found a submission with an extra folder, unpacking and moving up a directory")
             # Make a temp dir and copy data there
-            temp_folder_name = os.join(root_dir, "%s%s" % (relative_dir, '_tmp'))
+            temp_folder_name = os.path.join(root_dir, "%s%s" % (relative_dir, '_tmp'))
             try:
                 shutil.copytree(metadata_folder, temp_folder_name)
             except shutil.Error as e:
@@ -83,10 +83,10 @@ def get_bundle(root_dir, relative_dir, url):
             shutil.move(temp_folder_name, bundle_path)
 
         # any zips we see should be unzipped to a folder with the name of the file
-        for zip_file in glob(os.join(bundle_path, "*.zip")):
+        for zip_file in glob(os.path.join(bundle_path, "*.zip")):
             name_without_extension = os.path.splitext(zip_file)[0]
-            with ZipFile(os.join(bundle_path, zip_file), 'r') as z:
-                z.extractall(os.join(bundle_path, name_without_extension))
+            with ZipFile(os.path.join(bundle_path, zip_file), 'r') as z:
+                z.extractall(os.path.join(bundle_path, name_without_extension))
     else:
         # Otherwise we have some metadata type file, like run.txt containing other bundles to fetch.
         os.mkdir(bundle_path)

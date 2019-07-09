@@ -1,5 +1,5 @@
 import sys
-from worker import put_blob
+from util import put_blob
 
 
 url = sys.argv[1]
