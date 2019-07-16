@@ -19,19 +19,8 @@ from os.path import join, exists
 from subprocess import Popen, call
 from subprocess import CalledProcessError
 
-from billiard.exceptions import SoftTimeLimitExceeded
-
 import util
 import docker_util
-from celerymain import worker, app
-
-
-@app.task(name="compute_worker_run")
-def run_wrapper(task_id, task_args):
-    try:
-        local_run(worker, task_id, task_args)
-    except SoftTimeLimitExceeded:
-        worker._send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
 
 def local_run(worker, task_id, task_args):
@@ -352,7 +341,7 @@ def local_run(worker, task_id, task_args):
                         str(default_detailed_result_path)
                     ]
                     logging.info("Detailed results watcher program: %s",
-                                " ".join(detailed_result_watcher_args))
+                                 " ".join(detailed_result_watcher_args))
                     detailed_result_process = Popen(detailed_result_watcher_args)
 
             if run_ingestion_program:
@@ -411,7 +400,7 @@ def local_run(worker, task_id, task_args):
 
                 logging.error(ingestion_prog_cmd)
                 logging.info("Invoking ingestion program: %s",
-                            " ".join(ingestion_prog_cmd))
+                             " ".join(ingestion_prog_cmd))
                 ingestion_process = Popen(
                     ingestion_prog_cmd,
                     stdout=ingestion_stdout,
@@ -470,7 +459,7 @@ def local_run(worker, task_id, task_args):
                     logging.info("Exit Code regular process: %d", exit_code)
                 if ingestion_process:
                     logging.info("Exit Code ingestion process: %d",
-                                ingestion_program_exit_code)
+                                 ingestion_program_exit_code)
                     debug_metadata[
                         'ingestion_program_duration'] = time.time() - ingestion_program_start_time
 
@@ -609,4 +598,4 @@ def local_run(worker, task_id, task_args):
             shutil.rmtree(root_dir, ignore_errors=True)
         except:
             logging.exception("Unable to clean-up local folder %s (task_id=%s)",
-                             root_dir, task_id)
+                              root_dir, task_id)

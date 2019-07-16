@@ -1,6 +1,10 @@
 import logging
 import os
 from celery import Celery
+from aci_compute_worker import aci_run
+from worker import local_run
+from billiard.exceptions import SoftTimeLimitExceeded
+
 
 class CeleryWorker():
 
@@ -36,3 +40,21 @@ class CeleryWorker():
 
 worker = CeleryWorker('aci_compute_worker')
 app = worker.app
+
+
+@app.task(name="compute_worker_run")
+def run_wrapper(task_id, task_args):
+    try:
+        ACI_PRED = os.getenv("ACI_PRED", "True")
+        ACI_SCORE = os.getenv("ACI_SCORE", "True")
+        if task_args.get("predict", False):
+            if ACI_PRED == "True":
+                aci_run(worker, task_id, task_args)
+            else:
+                local_run(worker, task_id, task_args)
+        elif ACI_SCORE == "True":
+            aci_run(worker, task_id, task_args)
+        else:
+            local_run(worker, task_id, task_args)
+    except SoftTimeLimitExceeded:
+        worker._send_update(task_id, {'status': 'failed'}, task_args['secret'])

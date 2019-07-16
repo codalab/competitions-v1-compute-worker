@@ -4,6 +4,10 @@ docker_build_scratch:
 docker_build:
 	docker build -t aci_compute_worker .
 
+docker_push: docker_build_scratch
+	docker tag aci_compute_worker musinov/aci_compute_worker
+	docker push musinov/aci_compute_worker
+
 #if no connection with AFS - use port-forwarding
 #ssh -L 8081:$STORAGE_NAME.file.core.windows.net:445 <Azure_VM_USER>@<Azure_IP>
 afs_mount:

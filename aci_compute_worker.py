@@ -12,13 +12,8 @@ import tempfile
 import logging
 from subprocess import Popen
 
-from billiard.exceptions import SoftTimeLimitExceeded
-
 from cloudhunky.aci_worker import ACIWorker
 from cloudhunky.util import get_afs_creds
-
-from celerymain import worker, app
-from worker import local_run
 import util
 import docker_util
 
@@ -29,24 +24,6 @@ afs_creds = get_afs_creds()
 afs_name = afs_creds["AFS_NAME"]
 afs_key = afs_creds["AFS_KEY"]
 afs_share = afs_creds["AFS_SHARE"]
-
-ACI_PRED = os.getenv("ACI_PRED")
-ACI_SCORE = os.getenv("ACI_SCORE")
-
-@app.task(name="compute_worker_run")
-def run_wrapper(task_id, task_args):
-    try:
-        if task_args.get("predict", False):
-            if ACI_PRED == "True":
-                aci_run(worker, task_id, task_args)
-            else:
-                local_run(worker, task_id, task_args)
-        elif ACI_SCORE == "True":
-                aci_run(worker, task_id, task_args)
-        else:
-                local_run(worker, task_id, task_args)
-    except SoftTimeLimitExceeded:
-        worker._send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
 
 def aci_run(worker, task_id, task_args):
