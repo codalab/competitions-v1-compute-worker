@@ -30,13 +30,21 @@ afs_name = afs_creds["AFS_NAME"]
 afs_key = afs_creds["AFS_KEY"]
 afs_share = afs_creds["AFS_SHARE"]
 
+ACI_PRED = os.getenv("ACI_PRED")
+ACI_SCORE = os.getenv("ACI_SCORE")
+
 @app.task(name="compute_worker_run")
 def run_wrapper(task_id, task_args):
     try:
         if task_args.get("predict", False):
-            aci_run(worker, task_id, task_args)
+            if ACI_PRED == "True":
+                aci_run(worker, task_id, task_args)
+            else:
+                local_run(worker, task_id, task_args)
+        elif ACI_SCORE == "True":
+                aci_run(worker, task_id, task_args)
         else:
-            local_run(worker, task_id, task_args)
+                local_run(worker, task_id, task_args)
     except SoftTimeLimitExceeded:
         worker._send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
@@ -342,7 +350,7 @@ def aci_run(worker, task_id, task_args):
                     gpu_count=int(os.getenv("GPU", 0)),
                     envs=envs,
                     volume_mount_path=mounted_dir,
-                    timeout=5000,
+                    timeout=execution_time_limit,
                     afs_name=afs_name,
                     afs_key=afs_key,
                     afs_share=afs_share,
@@ -360,7 +368,7 @@ def aci_run(worker, task_id, task_args):
                 if detailed_results_url:
                     detailed_result_watcher_args = [
                         'bash',
-                        'detailed_result_put.sh',
+                        '/worker/detailed_result_put.sh',
                         str(detailed_results_url),
                         str(default_detailed_result_path)
                     ]
@@ -516,6 +524,8 @@ def aci_run(worker, task_id, task_args):
             #     ingestion_program_exit_code = 0
             exit_code = 0
             ingestion_program_exit_code = 0
+            if detailed_result_process:
+                detailed_result_process.kill()
 
             endTime = time.time()
             elapsedTime = endTime - startTime

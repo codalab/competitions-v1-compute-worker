@@ -19,8 +19,7 @@ RUN pip install -e ./cloud-hunky
 COPY *.py /worker/
 COPY detailed_result_put.sh /worker/
 
-ENV QUEUE=compute-worker
-ENV WORKER=worker
+
 
 # Run it
-CMD celery worker -A $WORKER -l info -Q $QUEUE -n $QUEUE -Ofast -Ofair --concurrency=1
+CMD celery worker -A $WORKER -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=$WORKER_CONCURRENCY

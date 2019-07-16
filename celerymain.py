@@ -1,4 +1,5 @@
 import logging
+import os
 from celery import Celery
 
 class CeleryWorker():
@@ -23,8 +24,8 @@ class CeleryWorker():
             # We need to send on the main virtual host, not whatever host we're currently
             # connected to.
             new_connection.virtual_host = virtual_host
-            new_connection.userid = 'guest'
-            new_connection.password = 'guest'
+            new_connection.userid = os.getenv("MAIN_BROKER_LOGIN", "guest")
+            new_connection.password = os.getenv("MAIN_BROKER_PASS", "guest")
             self.app.send_task(
                 'apps.web.tasks.update_submission',
                 args=(task_id, task_args, secret),
