@@ -95,12 +95,12 @@ def local_run(worker, task_id, task_args):
 
     try:
         # Cleanup dir in case any processes didn't clean up properly
-        for the_file in os.listdir(temp_dir):
-            file_path = os.path.join(temp_dir, the_file)
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path, ignore_errors=True)
+        # for the_file in os.listdir(temp_dir):
+        #     file_path = os.path.join(temp_dir, the_file)
+        #     if os.path.isfile(file_path):
+        #         os.unlink(file_path)
+        #     elif os.path.isdir(file_path):
+        #         shutil.rmtree(file_path, ignore_errors=True)
 
         worker._send_update(task_id, 'running', secret, extra={
             'metadata': debug_metadata

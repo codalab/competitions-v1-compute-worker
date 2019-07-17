@@ -56,7 +56,7 @@ def aci_run(worker, task_id, task_args):
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     mounted_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
-    docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
+    # docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
 
     # do_docker_pull(docker_image, task_id, secret)
 
@@ -90,12 +90,13 @@ def aci_run(worker, task_id, task_args):
 
     try:
         # Cleanup dir in case any processes didn't clean up properly
-        for the_file in os.listdir(temp_dir):
-            file_path = os.path.join(temp_dir, the_file)
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path, ignore_errors=True)
+        #TODO: cleanup properly
+        # for the_file in os.listdir(temp_dir):
+        #     file_path = os.path.join(temp_dir, the_file)
+        #     if os.path.isfile(file_path):
+        #         os.unlink(file_path)
+        #     elif os.path.isdir(file_path):
+        #         shutil.rmtree(file_path, ignore_errors=True)
 
         worker._send_update(task_id, 'running', secret, extra={
             'metadata': debug_metadata
@@ -501,8 +502,11 @@ def aci_run(worker, task_id, task_args):
             #     ingestion_program_exit_code = 0
             exit_code = 0
             ingestion_program_exit_code = 0
-            if detailed_result_process:
-                detailed_result_process.kill()
+            try:
+                if detailed_result_process:
+                    detailed_result_process.kill()
+            except:
+                pass
 
             endTime = time.time()
             elapsedTime = endTime - startTime
