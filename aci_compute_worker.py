@@ -175,7 +175,7 @@ def aci_run(worker, task_id, task_args):
         #
         # Invoke custom evaluation program
         os.chdir(run_dir)
-        os.environ["PATH"] += os.pathsep + run_dir + "/program"
+        os.environ["PATH"] += os.path.sep + run_dir + "/program"
         logging.info("Execution directory: %s", run_dir)
 
         if is_predict_step:
@@ -206,8 +206,6 @@ def aci_run(worker, task_id, task_args):
         timed_out = False
         exit_code = None
         ingestion_program_exit_code = None
-        available_memory_mib = 4000  # get_available_memory()
-        logging.info("Available memory: {}MB".format(available_memory_mib))
 
         # If our program command list is empty and we're not scoring, we probably got a result submission
         if not prog_cmd_list and is_predict_step:
@@ -228,7 +226,7 @@ def aci_run(worker, task_id, task_args):
                 metadata_path = os.path.join(submission_path, "metadata")
 
                 # If a metadata file is found, assume this is a code submission
-                is_code_submission = os._exists(metadata_path)
+                is_code_submission = os.path.exists(metadata_path)
                 # if exists(metadata_path):
                 #     submission_metadata = yaml.load(open(metadata_path).read())
                 #     is_code_submission = "command" in submission_metadata.keys()

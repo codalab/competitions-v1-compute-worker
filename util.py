@@ -34,7 +34,7 @@ def get_available_memory():
     return int(mem_mib)
 
 
-def get_bundle(root_dir, relative_dir, url):
+def get_bundle(root_dir: str, relative_dir: str, url: str):
     # get file name from /test.zip?signature=!@#a/df
     url_without_params = url.split('?')[0]
     file_name = url_without_params.split('/')[-1]
@@ -46,7 +46,6 @@ def get_bundle(root_dir, relative_dir, url):
     # file_download_path = os.path.join(root_dir, file_name)
     bundle_file = tempfile.NamedTemporaryFile(prefix='tmp', suffix=file_ext,
                                               dir=root_dir, delete=False)
-
     retries = 0
     while retries < 3:
         try:
