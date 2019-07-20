@@ -14,4 +14,4 @@ RUN pip install -r requirements.txt
 COPY *.py /worker/
 
 # Run it
-CMD celery -A worker worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
+CMD celery -A worker worker -l info -Q compute-worker -n compute-worker.%h -Ofast -Ofair --concurrency=1
