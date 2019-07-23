@@ -9,13 +9,11 @@ import traceback
 import yaml
 import shutil
 import tempfile
-import logging
-from subprocess import Popen
 
 from cloudhunky.aci_worker import ACIWorker
 from cloudhunky.util import get_afs_creds
-import util
-import docker_util
+from . import util, docker_util, codalabworker_logger
+
 
 # Config Azure ACI worker
 resource_group_name = "ACI"
@@ -33,7 +31,7 @@ def aci_run(worker, task_id, task_args):
     task_id: The tracking ID for this task.
     task_args: The input arguments for this task:
     """
-    logging.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
+    codalabworker_logger.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
     # run_id = task_args['bundle_id']
     docker_image = docker_util.docker_image_clean(task_args['docker_image'])
     bundle_url = task_args['bundle_url']
@@ -65,9 +63,9 @@ def aci_run(worker, task_id, task_args):
     #     do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
-        logging.info("Task is prediction.")
+        codalabworker_logger.info("Task is prediction.")
     else:
-        logging.info("Task is scoring.")
+        codalabworker_logger.info("Task is scoring.")
 
     running_processes = '<DISABLED>'
     debug_metadata = {
@@ -90,7 +88,7 @@ def aci_run(worker, task_id, task_args):
 
     try:
         # Cleanup dir in case any processes didn't clean up properly
-        #TODO: cleanup properly
+        # TODO: cleanup properly
         # for the_file in os.listdir(temp_dir):
         #     file_path = os.path.join(temp_dir, the_file)
         #     if os.path.isfile(file_path):
@@ -111,20 +109,20 @@ def aci_run(worker, task_id, task_args):
 
         # Fetch and stage the bundles
         start = time.time()
-        logging.info("Fetching bundles...")
+        codalabworker_logger.info("Fetching bundles...")
         bundles = util.get_bundle(root_dir, 'run', bundle_url)
         # If we were passed hidden data, move it
         if is_predict_step:
             hidden_ref_original_location = os.path.join(run_dir, 'hidden_ref')
             if os.path.exists(hidden_ref_original_location):
-                logging.info(
+                codalabworker_logger.info(
                     "Found reference data AND an ingestion program, hiding reference data for ingestion program to use.")
                 shutil.move(hidden_ref_original_location, temp_dir)
                 hidden_ref_dir = os.path.join(temp_dir, 'hidden_ref')
 
-        logging.info("Metadata: %s" % bundles)
+        codalabworker_logger.info("Metadata: %s" % bundles)
         end = time.time() - start
-        logging.info("Fetched bundles in %s", end)
+        codalabworker_logger.info("Fetched bundles in %s", end)
 
         # Verify we have an input folder: create one if it's not in the bundle.
         input_rel_path = 'input'
@@ -145,7 +143,7 @@ def aci_run(worker, task_id, task_args):
                 raise Exception(
                     "Ingestion program is missing metadata. Make sure the folder structure is "
                     "appropriate (metadata not in a subdirectory).")
-        logging.info("Ingestion program: {}".format(ingestion_prog_info))
+        codalabworker_logger.info("Ingestion program: {}".format(ingestion_prog_info))
 
         # Look for submission/scoring program metadata, if we're scoring -- otherwise ingestion
         # program will handle the case where a code submission has no metadata.
@@ -176,7 +174,7 @@ def aci_run(worker, task_id, task_args):
         # Invoke custom evaluation program
         os.chdir(run_dir)
         os.environ["PATH"] += os.path.sep + run_dir + "/program"
-        logging.info("Execution directory: %s", run_dir)
+        codalabworker_logger.info("Execution directory: %s", run_dir)
 
         if is_predict_step:
             stdout_file_name = 'prediction_stdout_file.txt'
@@ -218,7 +216,7 @@ def aci_run(worker, task_id, task_args):
             # if given, run the code or move the results appropriately
 
             if is_predict_step:
-                logging.info("Doing ingestion program checks")
+                codalabworker_logger.info("Doing ingestion program checks")
 
                 # Check that we should even be running this submission in a special way, may
                 # just be results..
@@ -232,35 +230,35 @@ def aci_run(worker, task_id, task_args):
                 #     is_code_submission = "command" in submission_metadata.keys()
 
                 if is_code_submission:
-                    logging.info("We have a code submission!")
+                    codalabworker_logger.info("We have a code submission!")
 
                 # We're in prediction so use an ingestion program to process the submission.
                 # Was an ingestion program provided?
                 if is_code_submission and ingestion_prog_info:
-                    logging.info(
+                    codalabworker_logger.info(
                         "Running organizer provided ingestion program and submission.")
                     # Run ingestion program, run submission
                     run_ingestion_program = True
                 elif is_code_submission:
-                    logging.info(
+                    codalabworker_logger.info(
                         "Running code submission like normal, no ingestion program provided.")
                 else:
                     # We didn't find an ingestion program, let's use the following simple one
                     # that just executes the submission and moves results
-                    logging.info(
+                    codalabworker_logger.info(
                         "No code submission, moving input directory to output.")
                     # This isn't a code submission, it is already ready to score. Remove
                     # old output directory and replace it with this submission's contents.
-                    logging.info("Removing output_dir: {}".format(output_dir))
+                    codalabworker_logger.info("Removing output_dir: {}".format(output_dir))
                     os.rmdir(output_dir)
-                    logging.info(
+                    codalabworker_logger.info(
                         "Renaming submission_path: {} to old output_dir name {}".format(
                             submission_path, output_dir))
                     os.rename(submission_path, output_dir)
             else:
                 # During scoring we don't worry about sharing directories and such when using ingestion programs
                 if ingestion_prog_info:
-                    logging.info(
+                    codalabworker_logger.info(
                         "Running organizer provided ingestion program for scoring")
                     run_ingestion_program = True
 
@@ -315,7 +313,7 @@ def aci_run(worker, task_id, task_args):
                 envs = {'PYTHONUNBUFFERED': 1}
                 # TODO: working dir, stop-timeout
                 prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && " + prog_cmd]
-                logging.info("Invoking ACI container with cmd: %s",
+                codalabworker_logger.info("Invoking ACI container with cmd: %s",
                              " ".join(prog_cmd))
                 aci_worker.run_task_based_container(
                     container_image_name=docker_image,
@@ -341,16 +339,17 @@ def aci_run(worker, task_id, task_args):
                 # )
 
                 # We're running a program, not just result submission, so we should keep an eye on detailed results
-                if detailed_results_url:
-                    detailed_result_watcher_args = [
-                        'bash',
-                        '/worker/detailed_result_put.sh',
-                        str(detailed_results_url),
-                        str(default_detailed_result_path)
-                    ]
-                    logging.info("Detailed results watcher program: %s",
-                                 " ".join(detailed_result_watcher_args))
-                    detailed_result_process = Popen(detailed_result_watcher_args)
+                detailed_result_process = None
+                # if detailed_results_url:
+                #     detailed_result_watcher_args = [
+                #         'bash',
+                #         '/worker/detailed_result_put.sh',
+                #         str(detailed_results_url),
+                #         str(default_detailed_result_path)
+                #     ]
+                #     codalabworker_logger.info("Detailed results watcher program: %s",
+                #                  " ".join(detailed_result_watcher_args))
+                #     detailed_result_process = Popen(detailed_result_watcher_args)
 
             if run_ingestion_program:
                 if 'command' not in ingestion_prog_info:
@@ -407,7 +406,7 @@ def aci_run(worker, task_id, task_args):
                 # ]
                 # ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
-                logging.error(ingestion_prog_cmd)
+                codalabworker_logger.error(ingestion_prog_cmd)
                 # ingestion_process = Popen(
                 #     ingestion_prog_cmd,
                 #     stdout=ingestion_stdout,
@@ -416,7 +415,7 @@ def aci_run(worker, task_id, task_args):
                 # )
                 ingestion_prog_cmd = ["/bin/bash", "-c",
                                       f"cd {run_dir} && " + prog_cmd]
-                logging.info("Invoking ingestion program: %s",
+                codalabworker_logger.info("Invoking ingestion program: %s",
                              " ".join(ingestion_prog_cmd))
                 aci_worker.run_task_based_container(
                     container_image_name=ingestion_program_docker_image,
@@ -434,7 +433,7 @@ def aci_run(worker, task_id, task_args):
                 ingestion_process = None
 
             # if evaluator_process:
-            #     logging.info("Started process, pid=%s" % evaluator_process.pid)
+            #     codalabworker_logger.info("Started process, pid=%s" % evaluator_process.pid)
             #
             # if evaluator_process or ingestion_process:
             #     # Only if a program is running do these checks, otherwise infinite loop checking nothing!
@@ -443,7 +442,7 @@ def aci_run(worker, task_id, task_args):
             #     signal.alarm(
             #         int(math.fabs(math.ceil(execution_time_limit - time_difference))))
             #
-            #     logging.info("Checking process, exit_code = %s" % exit_code)
+            #     codalabworker_logger.info("Checking process, exit_code = %s" % exit_code)
             #
             #     try:
             #         # While either program is running and hasn't exited, continue polling
@@ -459,7 +458,7 @@ def aci_run(worker, task_id, task_args):
             #     except (ValueError, OSError):
             #         pass  # tried to communicate with dead process
             #     except ExecutionTimeLimitExceeded:
-            #         logging.info("Killed process for running too long!")
+            #         codalabworker_logger.info("Killed process for running too long!")
             #         stderr.write("Execution time limit exceeded!")
             #
             #         if evaluator_process:
@@ -479,9 +478,9 @@ def aci_run(worker, task_id, task_args):
             #     signal.alarm(0)
             #
             #     if evaluator_process:
-            #         logging.info("Exit Code regular process: %d", exit_code)
+            #         codalabworker_logger.info("Exit Code regular process: %d", exit_code)
             #     if ingestion_process:
-            #         logging.info("Exit Code ingestion process: %d",
+            #         codalabworker_logger.info("Exit Code ingestion process: %d",
             #                     ingestion_program_exit_code)
             #         debug_metadata[
             #             'ingestion_program_duration'] = time.time() - ingestion_program_start_time
@@ -535,7 +534,7 @@ def aci_run(worker, task_id, task_args):
         stdout.close()
         stderr.close()
 
-        logging.info("Saving output files")
+        codalabworker_logger.info("Saving output files")
 
         util.put_blob(stdout_url, stdout_file)
         util.put_blob(stderr_url, stderr_file)
@@ -548,7 +547,7 @@ def aci_run(worker, task_id, task_args):
 
         private_dir = os.path.join(output_dir, 'private')
         if os.path.exists(private_dir):
-            logging.info("Packing private results...")
+            codalabworker_logger.info("Packing private results...")
             private_output_file = os.path.join(root_dir, 'run', 'private_output.zip')
             shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip',
                                 output_dir)
@@ -556,7 +555,7 @@ def aci_run(worker, task_id, task_args):
             shutil.rmtree(private_dir, ignore_errors=True)
 
         # Pack results and send them to Blob storage
-        logging.info("Packing results...")
+        codalabworker_logger.info("Packing results...")
         output_file = os.path.join(root_dir, 'run', 'output.zip')
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         util.put_blob(output_url, output_file)
@@ -593,12 +592,12 @@ def aci_run(worker, task_id, task_args):
 
         # check if timed out AFTER output files are written! If we exit sooner, no output is written
         if timed_out:
-            logging.exception("Run task timed out (task_id=%s).", task_id)
+            codalabworker_logger.exception("Run task timed out (task_id=%s).", task_id)
             worker._send_update(task_id, 'failed', secret, extra={
                 'metadata': debug_metadata
             })
         elif exit_code != 0 or ingestion_program_exit_code != 0:
-            logging.exception("Run task exit code non-zero (task_id=%s).", task_id)
+            logger.exception("Run task exit code non-zero (task_id=%s).", task_id)
             worker._send_update(task_id, 'failed', secret, extra={
                 'traceback': open(stderr_file).read(),
                 'metadata': debug_metadata
@@ -616,7 +615,7 @@ def aci_run(worker, task_id, task_args):
                 psutil.swap_memory()._asdict())
             debug_metadata["end_cpu_usage"] = psutil.cpu_percent(interval=None)
 
-        logging.exception("Run task failed (task_id=%s).", task_id)
+        codalabworker_logger.exception("Run task failed (task_id=%s).", task_id)
         worker._send_update(task_id, 'failed', secret, extra={
             'traceback': traceback.format_exc(),
             'metadata': debug_metadata
@@ -629,5 +628,5 @@ def aci_run(worker, task_id, task_args):
             os.chdir(current_dir)
             shutil.rmtree(root_dir, ignore_errors=True)
         except:
-            logging.exception("Unable to clean-up local folder %s (task_id=%s)",
+            codalabworker_logger.exception("Unable to clean-up local folder %s (task_id=%s)",
                               root_dir, task_id)

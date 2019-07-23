@@ -3,6 +3,7 @@ import urllib
 import urllib.request
 import tempfile
 import logging
+import logging.config
 import requests
 import shutil
 import yaml
@@ -10,6 +11,19 @@ from glob import glob
 
 from zipfile import ZipFile
 
+from . import codalabworker_logger
+
+
+def setup_logging(default_level=logging.INFO,
+        env_key='LOG_CFG'):
+    """Setup logging configuration"""
+    path = os.environ[env_key]
+    if os.path.exists(path):
+        with open(path, 'rt') as f:
+            config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
 
 def _find_only_folder_with_metadata(path):
     """Looks through a bundle for a single folder that contains a metadata file and
@@ -35,12 +49,13 @@ def get_available_memory():
 
 
 def get_bundle(root_dir: str, relative_dir: str, url: str):
+    """Get data from S3 Storage"""
     # get file name from /test.zip?signature=!@#a/df
     url_without_params = url.split('?')[0]
     file_name = url_without_params.split('/')[-1]
     file_ext = os.path.splitext(file_name)[1]
 
-    logging.debug("get_bundle :: Getting %s from %s" % (file_name, url))
+    codalabworker_logger.debug("get_bundle :: Getting %s from %s" % (file_name, url))
 
     # Save the bundle to a temp file
     # file_download_path = os.path.join(root_dir, file_name)
@@ -60,7 +75,7 @@ def get_bundle(root_dir: str, relative_dir: str, url: str):
     metadata_path = os.path.join(bundle_path, 'metadata')
 
     if file_ext == '.zip':
-        logging.info("get_bundle :: Unzipping %s" % bundle_file.name)
+        codalabworker_logger.info("get_bundle :: Unzipping %s" % bundle_file.name)
         # Unzip file to relative dir, if a zip
         with ZipFile(bundle_file.file, 'r') as z:
             z.extractall(bundle_path)
@@ -68,7 +83,7 @@ def get_bundle(root_dir: str, relative_dir: str, url: str):
         # check if we just unzipped something containing a folder and nothing else
         metadata_folder = _find_only_folder_with_metadata(bundle_path)
         if metadata_folder:
-            logging.info(
+            codalabworker_logger.info(
                 "get_bundle :: Found a submission with an extra folder, unpacking and moving up a directory")
             # Make a temp dir and copy data there
             temp_folder_name = os.path.join(root_dir, "%s%s" % (relative_dir, '_tmp'))
@@ -96,7 +111,7 @@ def get_bundle(root_dir: str, relative_dir: str, url: str):
     # Check for metadata containing more bundles to fetch
     metadata = None
     if os.path.exists(metadata_path):
-        logging.info(
+        codalabworker_logger.info(
             "get_bundle :: Fetching extra files specified in metadata for {}".format(
                 metadata_path))
         with open(metadata_path) as mf:
@@ -109,7 +124,7 @@ def get_bundle(root_dir: str, relative_dir: str, url: str):
                     "stderr",
                     "submitted-by", "submitted-at"):
                 if isinstance(v, str):
-                    logging.debug(
+                    codalabworker_logger.debug(
                         "get_bundle :: Fetching recursive bundle %s %s %s" % (
                             bundle_path, k, v))
                     # Here K is the relative directory and V is the url, like
@@ -119,7 +134,8 @@ def get_bundle(root_dir: str, relative_dir: str, url: str):
 
 
 def put_blob(url, file_path):
-    logging.info("Putting blob %s in %s" % (file_path, url))
+    """Put data to the S3 Storage"""
+    codalabworker_logger.info("Putting blob %s in %s" % (file_path, url))
     requests.put(
         url,
         data=open(file_path, 'rb'),

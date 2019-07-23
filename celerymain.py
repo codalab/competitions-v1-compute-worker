@@ -1,8 +1,9 @@
 import logging
 import os
 from celery import Celery
-from aci_compute_worker import aci_run
-from worker import local_run
+from codalabworker.aci_compute_worker import aci_run
+from codalabworker.worker import local_run
+from codalabworker.util import setup_logging
 from billiard.exceptions import SoftTimeLimitExceeded
 
 
@@ -40,6 +41,7 @@ class CeleryWorker():
 
 worker = CeleryWorker('aci_compute_worker')
 app = worker.app
+setup_logging()
 
 
 @app.task(name="compute_worker_run")

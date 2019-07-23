@@ -17,7 +17,9 @@ RUN pip install -e ./cloud-hunky
 
 # Copy our actual code
 COPY *.py /worker/
-COPY detailed_result_put.sh /worker/
+COPY codalabworker /worker/codalabworker/
+COPY codalabworker/detailed* /worker/
+
 
 
 

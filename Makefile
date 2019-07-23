@@ -4,6 +4,9 @@ docker_build_scratch:
 docker_build:
 	docker build -t aci_compute_worker .
 
+docker_debug:
+	docker run  -it -- entrypoint='' --network="host" -v ${MOUNT_AZURE}:${MOUNT_AZURE} --env-file .env_sample -v `pwd`/.azure:/root/.azure aci_compute_worker
+
 docker_push: docker_build_scratch
 	docker tag aci_compute_worker musinov/aci_compute_worker
 	docker push musinov/aci_compute_worker
@@ -19,7 +22,7 @@ docker_run:
 	docker run  --network="host" -v ${MOUNT_AZURE}:${MOUNT_AZURE} --env-file .env_sample -v `pwd`/.azure:/root/.azure aci_compute_worker
 
 run_aci_worker:
-	celery worker -A aci_compute_worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
+	celery worker -A celerymain -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
 
-run_simple_worker:
-	celery worker -A worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
+# run_simple_worker:
+# 	celery worker -A worker -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
