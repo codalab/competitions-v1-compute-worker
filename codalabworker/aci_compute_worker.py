@@ -54,13 +54,6 @@ def aci_run(worker, task_id, task_args):
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     mounted_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
-    # docker_runtime = os.environ.get('DOCKER_RUNTIME', '')
-
-    # do_docker_pull(docker_image, task_id, secret)
-
-    # if not docker_image == ingestion_program_docker_image:
-    #     # If the images are the same only do one
-    #     do_docker_pull(ingestion_program_docker_image, task_id, secret)
 
     if is_predict_step:
         codalabworker_logger.info("Task is prediction.")
@@ -87,15 +80,6 @@ def aci_run(worker, task_id, task_args):
     }
 
     try:
-        # Cleanup dir in case any processes didn't clean up properly
-        # TODO: cleanup properly
-        # for the_file in os.listdir(temp_dir):
-        #     file_path = os.path.join(temp_dir, the_file)
-        #     if os.path.isfile(file_path):
-        #         os.unlink(file_path)
-        #     elif os.path.isdir(file_path):
-        #         shutil.rmtree(file_path, ignore_errors=True)
-
         worker._send_update(task_id, 'running', secret, extra={
             'metadata': debug_metadata
         })
@@ -267,8 +251,6 @@ def aci_run(worker, task_id, task_args):
                 open(default_detailed_result_path, 'a').close()
                 os.chmod(default_detailed_result_path, 0o777)
 
-            # evaluator_process = None
-            # detailed_result_process = None
             if prog_cmd:
                 # Update command-line with the real paths
                 prog_cmd = prog_cmd \
@@ -280,39 +262,10 @@ def aci_run(worker, task_id, task_args):
                     .replace("$shared", shared_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                # prog_cmd = prog_cmd.split(' ')
-                eval_container_name = uuid.uuid4()
-                # docker_cmd = [
-                #     'docker',
-                #     'run',
-                #     # Remove it after run
-                #     '--rm',
-                #     # Give it a name we have stored as a variable
-                #     '--name={}'.format(eval_container_name),
-                #     # Try the new timeout feature
-                #     '--stop-timeout={}'.format(execution_time_limit),
-                #     # Don't allow subprocesses to raise privileges
-                #     '--security-opt=no-new-privileges',
-                #     # Set the right volume
-                #     '-v', '{0}:{0}'.format(run_dir),
-                #     '-v', '{0}:{0}'.format(shared_dir),
-                #     # Set aside 512m memory for the host
-                #     '--memory', '{}MB'.format(available_memory_mib - 512),
-                #     # Don't buffer python output, so we don't lose any
-                #     '-e', 'PYTHONUNBUFFERED=1',
-                #     # Set current working directory
-                #     '-w', run_dir,
-                #     # Set container runtime
-                #     '--runtime', docker_runtime,
-                #     # Note that hidden data dir is excluded here!
-                #     # Set the right image
-                #     docker_image,
-                # ]
 
-                # prog_cmd = docker_cmd + prog_cmd
                 envs = {'PYTHONUNBUFFERED': 1}
-                # TODO: working dir, stop-timeout
-                prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && " + prog_cmd]
+                # TODO: add dynamic resource params
+                prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && (time {prog_cmd}) |& tee {default_detailed_result_path}"]
                 codalabworker_logger.info("Invoking ACI container with cmd: %s",
                              " ".join(prog_cmd))
                 aci_worker.run_task_based_container(
@@ -329,28 +282,6 @@ def aci_run(worker, task_id, task_args):
                     afs_key=afs_key,
                     afs_share=afs_share,
                     afs_mount_subpath='')
-
-                # evaluator_process = Popen(
-                #     prog_cmd,
-                #     stdout=stdout,
-                #     stderr=stderr,
-                #     # env=os.environ,
-                #     # cwd=join(run_dir, 'program')
-                # )
-
-                # We're running a program, not just result submission, so we should keep an eye on detailed results
-                detailed_result_process = None
-                # if detailed_results_url:
-                #     detailed_result_watcher_args = [
-                #         'bash',
-                #         '/worker/detailed_result_put.sh',
-                #         str(detailed_results_url),
-                #         str(default_detailed_result_path)
-                #     ]
-                #     codalabworker_logger.info("Detailed results watcher program: %s",
-                #                  " ".join(detailed_result_watcher_args))
-                #     detailed_result_process = Popen(detailed_result_watcher_args)
-
             if run_ingestion_program:
                 if 'command' not in ingestion_prog_info:
                     raise Exception(
@@ -413,8 +344,9 @@ def aci_run(worker, task_id, task_args):
                 #     stderr=ingestion_stderr,
                 #     # cwd=join(run_dir, 'ingestion_program')
                 # )
+                # TODO: rewrite according to prediction stage
                 ingestion_prog_cmd = ["/bin/bash", "-c",
-                                      f"cd {run_dir} && " + prog_cmd]
+                                      f"cd {run_dir} && " + prog_cmd + " |& tee output.txt"]
                 codalabworker_logger.info("Invoking ingestion program: %s",
                              " ".join(ingestion_prog_cmd))
                 aci_worker.run_task_based_container(
@@ -499,12 +431,6 @@ def aci_run(worker, task_id, task_args):
             #     ingestion_program_exit_code = 0
             exit_code = 0
             ingestion_program_exit_code = 0
-            try:
-                if detailed_result_process:
-                    detailed_result_process.kill()
-            except:
-                pass
-
             endTime = time.time()
             elapsedTime = endTime - startTime
 
