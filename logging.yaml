@@ -33,17 +33,17 @@ handlers:
 loggers:
     codalabworker:
         level: DEBUG
-        #handlers: [console, info_file_handler, error_file_handler]
+#        handlers: [console, info_file_handler, error_file_handler]
         propagate: yes
 
     cloudhunky:
         level: DEBUG
-        #handlers: [console, info_file_handler, error_file_handler]
+#        handlers: [console, info_file_handler, error_file_handler]
         propagate: yes
 
     celery:
-        level: DEBUG
-        #handlers: [console, info_file_handler, error_file_handler]
+        level: INFO
+#        handlers: [console, info_file_handler, error_file_handler]
         propagate: yes
 
 root:

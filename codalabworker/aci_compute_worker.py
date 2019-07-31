@@ -21,7 +21,7 @@ aci_worker = ACIWorker(resource_group_name)
 afs_creds = get_afs_creds()
 afs_name = afs_creds["AFS_NAME"]
 afs_key = afs_creds["AFS_KEY"]
-afs_share = afs_creds["AFS_SHARE"]
+afs_share = os.getenv("AFS_SHARE")
 
 
 def aci_run(worker, task_id, task_args):
@@ -46,7 +46,6 @@ def aci_run(worker, task_id, task_args):
     private_output_url = task_args['private_output_url']
 
     execution_time_limit = task_args['execution_time_limit']
-    # container = task_args['container_name']
     is_predict_step = task_args.get("predict", False)
     is_scoring_step = not is_predict_step
     secret = task_args['secret']

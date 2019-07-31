@@ -19,9 +19,7 @@ RUN pip install -e ./cloud-hunky
 COPY *.py /worker/
 COPY codalabworker /worker/codalabworker/
 COPY codalabworker/detailed* /worker/
-
-
-
+COPY logging.yaml /log/
 
 # Run it
-CMD celery worker -A $WORKER -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=$WORKER_CONCURRENCY
+CMD celery worker -A $WORKER -l info -Q compute-worker -n compute-worker -Ofast -Ofair --concurrency=1
