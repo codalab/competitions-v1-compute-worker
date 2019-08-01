@@ -9,8 +9,8 @@ do
     sudo mount -t cifs //$STORAGE_NAME.file.core.windows.net/$AZURE_SHARE $WORKER_FOLDER \
         -o rw,vers=3.0,port=445,username=$STORAGE_NAME,password=$STORAGE_KEY,uid=1000,dir_mode=0777,$
     docker run -d --rm  --name=$AZURE_SHARE --network="host" \
-        -v $WORKER_FOLDER:$WORKER_FOLDER \
-        -e AFS_SHARE=$AZURE_SHARE \
+        -v $WORKER_FOLDER:/tmp/codalab \
+        --env AFS_SHARE=$AZURE_SHARE \
         --env-file .env_sample \
         -v /home/imusinov/.azure:/root/.azure aci_compute_worker
     echo "$AZURE_SHARE was deployed"

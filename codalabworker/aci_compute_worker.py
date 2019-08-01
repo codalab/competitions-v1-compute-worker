@@ -39,17 +39,13 @@ def aci_run(worker, task_id, task_args):
         task_args['ingestion_program_docker_image'])
     stdout_url = task_args['stdout_url']
     stderr_url = task_args['stderr_url']
-    ingestion_program_stderr_url = task_args['ingestion_program_stderr_url']
-    ingestion_program_output_url = task_args['ingestion_program_output_url']
     output_url = task_args['output_url']
-    detailed_results_url = task_args.get('detailed_results_url')
     private_output_url = task_args['private_output_url']
 
     execution_time_limit = task_args['execution_time_limit']
     is_predict_step = task_args.get("predict", False)
     is_scoring_step = not is_predict_step
     secret = task_args['secret']
-    current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     mounted_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
@@ -166,21 +162,7 @@ def aci_run(worker, task_id, task_args):
             stdout_file_name = 'stdout.txt'
             stderr_file_name = 'stderr.txt'
 
-        stdout_file = os.path.join(run_dir, stdout_file_name)
-        stderr_file = os.path.join(run_dir, stderr_file_name)
-        stdout = open(stdout_file, "a+")
-        stderr = open(stderr_file, "a+")
         prog_status = []
-
-        ingestion_stdout_file = os.path.join(run_dir, 'ingestion_stdout_file.txt')
-        ingestion_stderr_file = os.path.join(run_dir, 'ingestion_stderr_file.txt')
-        ingestion_stdout = open(ingestion_stdout_file, "a+")
-        ingestion_stderr = open(ingestion_stderr_file, "a+")
-        ingestion_program_start_time = None
-        ingestion_program_end_time = None
-
-        default_detailed_result_path = os.path.join(output_dir,
-                                                    'detailed_results.html')
 
         run_ingestion_program = False
 
@@ -197,7 +179,6 @@ def aci_run(worker, task_id, task_args):
 
             # Ingestion programs (optional) determine whether or not a submission is code or results, and then
             # if given, run the code or move the results appropriately
-
             if is_predict_step:
                 codalabworker_logger.info("Doing ingestion program checks")
 
@@ -245,11 +226,6 @@ def aci_run(worker, task_id, task_args):
                         "Running organizer provided ingestion program for scoring")
                     run_ingestion_program = True
 
-            if detailed_results_url:
-                # Create empty detailed results
-                open(default_detailed_result_path, 'a').close()
-                os.chmod(default_detailed_result_path, 0o777)
-
             if prog_cmd:
                 # Update command-line with the real paths
                 prog_cmd = prog_cmd \
@@ -264,7 +240,7 @@ def aci_run(worker, task_id, task_args):
 
                 envs = {'PYTHONUNBUFFERED': 1}
                 # TODO: add dynamic resource params
-                prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && (time {prog_cmd}) |& tee {default_detailed_result_path}"]
+                prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && (time {prog_cmd}) |& tee {os.path.join(output_dir, 'output.txt')}"]
                 codalabworker_logger.info("Invoking ACI container with cmd: %s",
                              " ".join(prog_cmd))
                 aci_worker.run_task_based_container(
@@ -281,16 +257,14 @@ def aci_run(worker, task_id, task_args):
                     afs_key=afs_key,
                     afs_share=afs_share,
                     afs_mount_subpath='')
+            # TODO: Test ingestion !
             if run_ingestion_program:
                 if 'command' not in ingestion_prog_info:
                     raise Exception(
                         "Ingestion program metadata was found, but is missing the 'command' attribute,"
                         "which is necessary to execute the ingestion program.")
-                ingestion_program_start_time = time.time()
 
                 ingestion_prog_cmd = ingestion_prog_info['command']
-
-                # ingestion_run_dir = join(run_dir, 'ingestion')
                 ingestion_prog_cmd = ingestion_prog_cmd \
                     .replace("$program", os.path.join(run_dir, 'ingestion_program')) \
                     .replace("$ingestion_program",
@@ -304,45 +278,8 @@ def aci_run(worker, task_id, task_args):
                     .replace("$hidden", hidden_ref_dir) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
-                # ingestion_prog_cmd = ingestion_prog_cmd.split(' ')
-                ingestion_container_name = uuid.uuid4()
-                # ingestion_docker_cmd = [
-                #     'docker',
-                #     'run',
-                #     # Remove it after run
-                #     '--rm',
-                #     # Give it a name we have stored as a variable
-                #     '--name={}'.format(ingestion_container_name),
-                #     # Try the new timeout feature
-                #     '--stop-timeout={}'.format(execution_time_limit),
-                #     # Don't allow subprocesses to raise privileges
-                #     '--security-opt=no-new-privileges',
-                #     # Set the right volume
-                #     '-v', '{0}:{0}'.format(run_dir),
-                #     '-v', '{0}:{0}'.format(shared_dir),
-                #     '-v', '{0}:{0}'.format(hidden_ref_dir),
-                #     # Set aside 512m memory for the host
-                #     '--memory', '{}MB'.format(available_memory_mib - 512),
-                #     # Add the participants submission dir to PYTHONPATH
-                #     '-e',
-                #     'PYTHONPATH=$PYTHONPATH:{}'.format(join(run_dir, 'program')),
-                #     '-e', 'PYTHONUNBUFFERED=1',
-                #     # Set current working directory to submission dir
-                #     '-w', run_dir,
-                #     # Set container runtime
-                #     '--runtime', docker_runtime,
-                #     # Set the right image
-                #     ingestion_program_docker_image,
-                # ]
-                # ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
                 codalabworker_logger.error(ingestion_prog_cmd)
-                # ingestion_process = Popen(
-                #     ingestion_prog_cmd,
-                #     stdout=ingestion_stdout,
-                #     stderr=ingestion_stderr,
-                #     # cwd=join(run_dir, 'ingestion_program')
-                # )
                 # TODO: rewrite according to prediction stage
                 ingestion_prog_cmd = ["/bin/bash", "-c",
                                       f"cd {run_dir} && " + prog_cmd + " |& tee output.txt"]
@@ -360,74 +297,7 @@ def aci_run(worker, task_id, task_args):
                     afs_key=afs_key,
                     afs_share=afs_share,
                     afs_mount_subpath='')
-            else:
-                ingestion_process = None
 
-            # if evaluator_process:
-            #     codalabworker_logger.info("Started process, pid=%s" % evaluator_process.pid)
-            #
-            # if evaluator_process or ingestion_process:
-            #     # Only if a program is running do these checks, otherwise infinite loop checking nothing!
-            #     time_difference = time.time() - startTime
-            #     signal.signal(signal.SIGALRM, alarm_handler)
-            #     signal.alarm(
-            #         int(math.fabs(math.ceil(execution_time_limit - time_difference))))
-            #
-            #     codalabworker_logger.info("Checking process, exit_code = %s" % exit_code)
-            #
-            #     try:
-            #         # While either program is running and hasn't exited, continue polling
-            #         while (evaluator_process and exit_code == None) or (
-            #                 ingestion_process and ingestion_program_exit_code == None):
-            #             time.sleep(1)
-            #
-            #             if evaluator_process and exit_code is None:
-            #                 exit_code = evaluator_process.poll()
-            #
-            #             if ingestion_process and ingestion_program_exit_code is None:
-            #                 ingestion_program_exit_code = ingestion_process.poll()
-            #     except (ValueError, OSError):
-            #         pass  # tried to communicate with dead process
-            #     except ExecutionTimeLimitExceeded:
-            #         codalabworker_logger.info("Killed process for running too long!")
-            #         stderr.write("Execution time limit exceeded!")
-            #
-            #         if evaluator_process:
-            #             exit_code = -1
-            #             evaluator_process.kill()
-            #             call(['docker', 'kill', '{}'.format(eval_container_name)])
-            #         if ingestion_process:
-            #             ingestion_program_exit_code = -1
-            #             ingestion_process.kill()
-            #             call(
-            #                 ['docker', 'kill', '{}'.format(ingestion_container_name)])
-            #         if detailed_result_process:
-            #             detailed_result_process.kill()
-            #
-            #         timed_out = True
-            #
-            #     signal.alarm(0)
-            #
-            #     if evaluator_process:
-            #         codalabworker_logger.info("Exit Code regular process: %d", exit_code)
-            #     if ingestion_process:
-            #         codalabworker_logger.info("Exit Code ingestion process: %d",
-            #                     ingestion_program_exit_code)
-            #         debug_metadata[
-            #             'ingestion_program_duration'] = time.time() - ingestion_program_start_time
-            #
-            #     if detailed_result_process:
-            #         detailed_result_process.kill()
-            # else:
-            #     # let code down below know everything went OK
-            #     exit_code = 0
-            #     ingestion_program_exit_code = 0
-
-            # Set exit codes to 0 so task is marked as finished
-            # if not evaluator_process:
-            #     exit_code = 0
-            # if not ingestion_process:
-            #     ingestion_program_exit_code = 0
             exit_code = 0
             ingestion_program_exit_code = 0
             endTime = time.time()
@@ -453,23 +323,6 @@ def aci_run(worker, task_id, task_args):
             if timed_out or exit_code != 0 or ingestion_program_exit_code != 0:
                 # Submission failed somewhere in here, bomb out
                 break
-
-        # END FOR
-
-        stdout.close()
-        stderr.close()
-
-        codalabworker_logger.info("Saving output files")
-
-        util.put_blob(stdout_url, stdout_file)
-        util.put_blob(stderr_url, stderr_file)
-
-        if run_ingestion_program:
-            ingestion_stdout.close()
-            ingestion_stderr.close()
-            util.put_blob(ingestion_program_output_url, ingestion_stdout_file)
-            util.put_blob(ingestion_program_stderr_url, ingestion_stderr_file)
-
         private_dir = os.path.join(output_dir, 'private')
         if os.path.exists(private_dir):
             codalabworker_logger.info("Packing private results...")
@@ -485,29 +338,6 @@ def aci_run(worker, task_id, task_args):
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         util.put_blob(output_url, output_file)
 
-        if detailed_results_url:
-            detailed_result_data = open(default_detailed_result_path).read()
-            if not detailed_result_data:
-                #
-                # *LEGACY* detailed result, grabs first *.html it sees -- newer versions use regular path
-                # and update in real time
-                #
-
-                for root, dirs, files in os.walk(output_dir):
-                    # Check if the output folder contain an "html file" and copy the html file as detailed_results.html
-                    # traverse root directory, and list directories as dirs and files as files
-                    html_found = False
-                    if not (html_found):
-                        path = root.split('/')
-                        for file in files:
-                            file_to_upload = os.path.join(root, file)
-                            file_ext = os.path.splitext(file_to_upload)[1]
-                            if file_ext.lower() == ".html":
-                                util.put_blob(detailed_results_url, file_to_upload)
-                                html_found = True
-                    else:
-                        break
-
         # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(
             psutil.virtual_memory()._asdict())
@@ -522,9 +352,9 @@ def aci_run(worker, task_id, task_args):
                 'metadata': debug_metadata
             })
         elif exit_code != 0 or ingestion_program_exit_code != 0:
-            logger.exception("Run task exit code non-zero (task_id=%s).", task_id)
+            codalabworker_logger.exception("Run task exit code non-zero (task_id=%s).", task_id)
             worker._send_update(task_id, 'failed', secret, extra={
-                'traceback': open(stderr_file).read(),
+                'traceback': None,
                 'metadata': debug_metadata
             })
         else:
@@ -546,12 +376,13 @@ def aci_run(worker, task_id, task_args):
             'metadata': debug_metadata
         })
 
+
     # comment out for dev and viewing of raw folder outputs.
     if root_dir is not None and not os.environ.get("DONT_FINALIZE_SUBMISSION"):
         # Try cleaning-up temporary directory
         try:
-            os.chdir(current_dir)
             shutil.rmtree(root_dir, ignore_errors=True)
+            codalabworker_logger.info(f"{root_dir} was cleaned")
         except:
             codalabworker_logger.exception("Unable to clean-up local folder %s (task_id=%s)",
                               root_dir, task_id)
