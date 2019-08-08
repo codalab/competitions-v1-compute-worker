@@ -697,6 +697,7 @@ def run(task_id, task_args):
                     .replace("$output", join(run_dir, 'output')) \
                     .replace("$tmp", join(run_dir, 'temp')) \
                     .replace("$shared", shared_dir) \
+                    .replace("$execution_time_limit", execution_time_limit) \
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
 
