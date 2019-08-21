@@ -29,10 +29,10 @@ from subprocess import Popen, call, check_output, CalledProcessError, PIPE
 from zipfile import ZipFile, BadZipfile
 
 from billiard import SoftTimeLimitExceeded
-from celery import Celery, task
+from celery import Celery, task, signature
 
 # from celery.app import app_or_default
-from celery.signals import worker_process_init
+from celery.signals import celeryd_after_setup
 
 app = Celery('worker')
 app.config_from_object('celeryconfig')
@@ -107,24 +107,25 @@ def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/')
 
 def _get_worker_id():
     # Save worker ID or get existing
-    if not os.path.exists('.worker_registration'):
+    registration_path = '/worker_registration/.worker_registration'
+    if not os.path.exists(registration_path):
         logger.info("Doing first time worker configuration")
         worker_id = str(uuid.uuid4())
-        worker_conf_filename = '.worker_registration'
-        with open(worker_conf_filename, 'w') as worker_info:
+        with open(registration_path, 'w') as worker_info:
             worker_info.write(worker_id)
-        logger.info("Wrote id = '{}' to '{}'".format(worker_id, worker_conf_filename))
+        logger.info("Wrote id = '{}' to '{}'".format(worker_id, registration_path))
     else:
-        worker_id = open('.worker_registration', 'r').read()
+        worker_id = open(registration_path, 'r').read()
         logger.info("Found existing worker id: {}".format(worker_id))
     return worker_id
 
 
+# This is set when configuring workers after celeryd setup
 WORKER_ID = _get_worker_id()
 
 
-@worker_process_init.connect()
-def configure_workers(sender=None, conf=None, **kwargs):
+@celeryd_after_setup.connect()
+def configure_workers(sender, conf=None, **kwargs):
     # print("INIT configure workers")
     try:
         gpus = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
@@ -147,6 +148,14 @@ def configure_workers(sender=None, conf=None, **kwargs):
         psutil.disk_usage('/').total / (1024.0 ** 3),
         gpus,
         queue_vhost
+    )
+
+    # Make our keepalive so we can do statistics on worker utilization (up or down? in use?)
+    app.add_periodic_task(
+        60,  # seconds
+        signature('apps.web.tasks.worker_keep_alive', args=(WORKER_ID,)),
+        name='keepalive every 60 seconds',
+        queue="submission-updates",
     )
 
 
