@@ -10,7 +10,7 @@ mkdir -p /tmp/codalab && nvidia-docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
     -v /tmp/codalab:/tmp/codalab \
-    -v ./worker_registration:/worker_registration \
+    -v worker_registration:/worker_registration \
     -d \
     --name compute_worker \
     --env BROKER_URL=<queue broker url> \
@@ -32,7 +32,7 @@ nvidia-docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
     -v /tmp/codalab:/tmp/codalab \
-    -v ./worker_registration:/worker_registration \
+    -v worker_registration:/worker_registration \
     -d \
     --name compute_worker \
     --env-file .env \

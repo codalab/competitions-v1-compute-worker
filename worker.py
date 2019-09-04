@@ -128,7 +128,7 @@ WORKER_ID = _get_worker_id()
 def configure_workers(sender, conf=None, **kwargs):
     # print("INIT configure workers")
     try:
-        gpus = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+        gpus = str(subprocess.check_output(["lspci"])).count('3D controller:')
     except:  # nivida-smi not found TODO: Replace with valid exceptions...!
         gpus = 0
 
