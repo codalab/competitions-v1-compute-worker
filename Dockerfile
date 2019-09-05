@@ -27,12 +27,12 @@ RUN pip install -U pip
 COPY requirements.txt /worker/requirements.txt
 RUN pip install -r requirements.txt
 
+# Add in tools to count GPUs
+RUN apt-get install pciutils -y
+
 # Copy our actual code
 COPY *.py /worker/
 COPY detailed_result_put.sh /worker/
-
-# Add in nvidia-smi to count GPUs
-RUN apt-get install pciutils -y
 
 # Run it
 CMD celery -A worker worker -l info -B -Q compute-worker -n compute-worker%h -Ofast -Ofair --concurrency=1

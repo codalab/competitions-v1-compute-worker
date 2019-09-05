@@ -45,6 +45,17 @@ logger = logging.getLogger()
 logger.propagate = False
 
 
+def _delay_submission_updates_task(task_name, args, virtual_host):
+    with app.connection() as new_connection:
+        # We need to send on the main virtual host, not whatever host we're currently
+        # connected to.
+        new_connection.virtual_host = virtual_host
+        app.send_task(
+            task_name,
+            args=args,
+            connection=new_connection,
+            queue="submission-updates",
+        )
 
 
 def register_worker(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost, virtual_host='/'):
@@ -57,16 +68,11 @@ def register_worker(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_
         gpus,
         queue_vhost,
     ))
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.register_worker',
-            args=(worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost),
-            connection=new_connection,
-            queue="submission-updates",
-        )
+    _delay_submission_updates_task(
+        'apps.web.tasks.register_worker',
+        (worker_id, ip, cpu_count, mem_mb, harddrive_gb, gpus, queue_vhost),
+        virtual_host
+    )
 
 
 def worker_job_started(worker_id, submission_secret, is_scoring, virtual_host='/'):
@@ -75,16 +81,11 @@ def worker_job_started(worker_id, submission_secret, is_scoring, virtual_host='/
         submission_secret,
         is_scoring,
     ))
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.worker_job_started',
-            args=(worker_id, submission_secret, is_scoring),
-            connection=new_connection,
-            queue="submission-updates",
-        )
+    _delay_submission_updates_task(
+        'apps.web.tasks.worker_job_started',
+        (worker_id, submission_secret, is_scoring),
+        virtual_host
+    )
 
 
 def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/'):
@@ -93,16 +94,11 @@ def worker_job_ended(worker_id, submission_secret, is_scoring, virtual_host='/')
         submission_secret,
         is_scoring,
     ))
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.worker_job_ended',
-            args=(worker_id, submission_secret, is_scoring),
-            connection=new_connection,
-            queue="submission-updates",
-        )
+    _delay_submission_updates_task(
+        'apps.web.tasks.worker_job_ended',
+        (worker_id, submission_secret, is_scoring),
+        virtual_host
+    )
 
 
 def _get_worker_id():
@@ -320,16 +316,7 @@ def _send_update(task_id, status, secret, virtual_host='/', extra=None):
     if extra:
         task_args['extra'] = extra
     logger.info("Updating task=%s status to %s", task_id, status)
-    with app.connection() as new_connection:
-        # We need to send on the main virtual host, not whatever host we're currently
-        # connected to.
-        new_connection.virtual_host = virtual_host
-        app.send_task(
-            'apps.web.tasks.update_submission',
-            args=(task_id, task_args, secret, WORKER_ID),
-            connection=new_connection,
-            queue="submission-updates",
-        )
+    _delay_submission_updates_task('apps.web.tasks.update_submission', (task_id, task_args, secret, WORKER_ID), virtual_host)
 
 
 def put_blob(url, file_path):
