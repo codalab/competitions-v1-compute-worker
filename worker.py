@@ -111,7 +111,8 @@ def _get_worker_id():
             worker_info.write(worker_id)
         logger.info("Wrote id = '{}' to '{}'".format(worker_id, registration_path))
     else:
-        worker_id = open(registration_path, 'r').read()
+        with open(registration_path, 'r') as worker_info:
+            worker_id = worker_info.read()
         logger.info("Found existing worker id: {}".format(worker_id))
     return worker_id
 
@@ -125,7 +126,7 @@ def configure_workers(sender, conf=None, **kwargs):
     # print("INIT configure workers")
     try:
         gpus = str(subprocess.check_output(["lspci"])).count('3D controller:')
-    except:  # nivida-smi not found TODO: Replace with valid exceptions...!
+    except FileNotFoundError:
         gpus = 0
 
     # Get vhost from broker_url
@@ -141,7 +142,7 @@ def configure_workers(sender, conf=None, **kwargs):
         requests.get("https://api.ipify.org").text,
         multiprocessing.cpu_count(),
         get_available_memory(),
-        psutil.disk_usage('/').total / (1024.0 ** 3),
+        psutil.disk_usage('/').total / (1024.0 ** 3),  # in GB
         gpus,
         queue_vhost
     )
