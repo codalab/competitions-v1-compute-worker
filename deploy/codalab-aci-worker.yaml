@@ -1,0 +1,41 @@
+- hosts: all
+  vars:
+    worker_number: 1
+    mount_path: /mnt/afs/worker
+  become: true
+  tasks:
+    - name: Create ACI-worker config folder
+      file:
+        path: "/etc/aciworker"
+        state: directory
+        mode: '0755'
+
+    - name: Copy configs
+      copy:
+        src: configs/{{ item }}
+        dest: /etc/aciworker/{{ item }}
+        mode: '0755'
+      loop:
+        - azure_creds
+        - afs_creds.yml
+        - env_config
+
+    - name: Install python docker sdk
+      pip:
+        name: docker
+        executable: pip3
+
+    - name: Run docker with codalab-aci-worker
+      docker_container:
+        name: "aciworker-{{ item }}"
+        state: started
+        restart: yes
+        image: aci_compute_worker
+        volumes:
+          - "{{ mount_path }}{{ item }}:/tmp/codalab"
+          - /etc/aciworker:/root/.azure
+        env_file: /etc/aciworker/env_config
+        env:
+          AFS_SHARE: "worker{{ item }}"
+        network_mode: host
+      with_sequence: count={{ worker_number }}

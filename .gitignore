@@ -103,3 +103,13 @@ ENV/
 \.idea/
 
 \.azure/
+
+deploy/ansible.cfg
+
+deploy/hosts.yaml
+
+deplot/*.retry
+
+deploy/env_config
+
+deploy/configs/*

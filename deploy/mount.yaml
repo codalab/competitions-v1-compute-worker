@@ -1,0 +1,40 @@
+- hosts: all
+  vars:
+    worker_number: 5
+    storage_name: kubeocean
+    mount_path: /mnt/afs/worker
+  become: true
+  tasks:
+  - name: Update and Install cifs-utils
+    apt:
+      name: cifs-utils
+      state: present
+      update_cache: yes
+
+  - name: Create a directory for workers AFS
+    file:
+      path: "{{ mount_path }}{{ item }}"
+      state: directory
+      mode: '0755'
+    with_sequence: count={{ worker_number }}
+
+  - name: Create a directory for AFS creds
+    file:
+      path: "/etc/smbcredentials"
+      state: directory
+      mode: '0755'
+
+  - name: Copy credentials
+    copy:
+      src: configs/afs.cred
+      dest: /etc/smbcredentials/afs.cred
+      mode: '0600'
+
+  - name: Mount Azure File Share
+    mount:
+      path: "{{ mount_path }}{{ item }}"
+      src: "//{{ storage_name }}.file.core.windows.net/worker{{ item }}"
+      opts: "vers=3.0,credentials=/etc/smbcredentials/afs.cred,dir_mode=0777,file_mode=0777,serverino"
+      fstype: cifs
+      state: mounted
+    with_sequence: count={{ worker_number }}
