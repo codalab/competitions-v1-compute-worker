@@ -30,7 +30,7 @@
         name: "aciworker-{{ item }}"
         state: started
         restart: yes
-        image: aci_compute_worker
+        image: musinov/aci_compute_worker
         volumes:
           - "{{ mount_path }}{{ item }}:/tmp/codalab"
           - /etc/aciworker:/root/.azure
@@ -38,4 +38,5 @@
         env:
           AFS_SHARE: "worker{{ item }}"
         network_mode: host
+        pull: yes
       with_sequence: count={{ worker_number }}

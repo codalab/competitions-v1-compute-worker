@@ -32,7 +32,6 @@ def aci_run(worker, task_id, task_args):
     task_args: The input arguments for this task:
     """
     codalabworker_logger.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
-    # run_id = task_args['bundle_id']
     docker_image = docker_util.docker_image_clean(task_args['docker_image'])
     bundle_url = task_args['bundle_url']
     ingestion_program_docker_image = docker_util.docker_image_clean(
@@ -68,7 +67,6 @@ def aci_run(worker, task_id, task_args):
         "beginning_swap_memory_usage": json.dumps(psutil.swap_memory()._asdict()),
         "beginning_cpu_usage": psutil.cpu_percent(interval=None),
 
-        # following are filled in after test ran + process SHOULD have been closed
         "end_virtual_memory_usage": None,
         "end_swap_memory_usage": None,
         "end_cpu_usage": None,
@@ -338,7 +336,6 @@ def aci_run(worker, task_id, task_args):
         shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
         util.put_blob(output_url, output_file)
 
-        # Save extra metadata
         debug_metadata["end_virtual_memory_usage"] = json.dumps(
             psutil.virtual_memory()._asdict())
         debug_metadata["end_swap_memory_usage"] = json.dumps(
@@ -376,10 +373,7 @@ def aci_run(worker, task_id, task_args):
             'metadata': debug_metadata
         })
 
-
-    # comment out for dev and viewing of raw folder outputs.
     if root_dir is not None and not os.environ.get("DONT_FINALIZE_SUBMISSION"):
-        # Try cleaning-up temporary directory
         try:
             shutil.rmtree(root_dir, ignore_errors=True)
             codalabworker_logger.info(f"{root_dir} was cleaned")
