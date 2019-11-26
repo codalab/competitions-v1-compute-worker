@@ -113,3 +113,7 @@ deplot/*.retry
 deploy/env_config
 
 deploy/configs/*
+
+*.cfg
+
+deploy/configs/
