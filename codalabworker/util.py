@@ -152,3 +152,15 @@ class ExecutionTimeLimitExceeded(Exception):
 
 def alarm_handler(signum, frame):
     raise ExecutionTimeLimitExceeded
+
+def get_resources(task_args):
+    if task_args.get("predict", False):
+        cpu = int(task_args.get("PRED_CPU", 1))
+        memory = int(task_args.get("PRED_RAM", 4))
+        gpu = int(task_args.get("PRED_GPU", 0))
+        return cpu, memory, gpu
+    else:
+        cpu = int(task_args.get("SCORE_CPU", 1))
+        memory = int(task_args.get("SCORE_RAM", 4))
+        gpu = int(task_args.get("SCORE_GPU", 0))
+        return cpu, memory, gpu

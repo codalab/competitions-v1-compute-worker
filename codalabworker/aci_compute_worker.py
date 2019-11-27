@@ -36,8 +36,6 @@ def aci_run(worker, task_id, task_args):
     bundle_url = task_args['bundle_url']
     ingestion_program_docker_image = docker_util.docker_image_clean(
         task_args['ingestion_program_docker_image'])
-    stdout_url = task_args['stdout_url']
-    stderr_url = task_args['stderr_url']
     output_url = task_args['output_url']
     private_output_url = task_args['private_output_url']
 
@@ -152,18 +150,8 @@ def aci_run(worker, task_id, task_args):
         os.chdir(run_dir)
         os.environ["PATH"] += os.path.sep + run_dir + "/program"
         codalabworker_logger.info("Execution directory: %s", run_dir)
-
-        if is_predict_step:
-            stdout_file_name = 'prediction_stdout_file.txt'
-            stderr_file_name = 'prediction_stderr_file.txt'
-        else:
-            stdout_file_name = 'stdout.txt'
-            stderr_file_name = 'stderr.txt'
-
         prog_status = []
-
         run_ingestion_program = False
-
         timed_out = False
         exit_code = None
         ingestion_program_exit_code = None
@@ -241,13 +229,16 @@ def aci_run(worker, task_id, task_args):
                 prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && (time {prog_cmd}) |& tee {os.path.join(output_dir, 'output.txt')}"]
                 codalabworker_logger.info("Invoking ACI container with cmd: %s",
                              " ".join(prog_cmd))
+
+                cpu, memory_in_gb, gpu_count = util.get_resources(task_args)
+                codalabworker_logger.info(f"Invoking ACI container with CPU {cpu}, RAM {memory_in_gb}, GPU {gpu_count}")
                 aci_worker.run_task_based_container(
                     container_image_name=docker_image,
                     command=prog_cmd,
                     # command=["/bin/bash", "-c", "sleep 1000000"],
-                    cpu=int(os.getenv("CPU", 2)),
-                    memory_in_gb=int(os.getenv("RAM", 8)),
-                    gpu_count=int(os.getenv("GPU", 0)),
+                    cpu=cpu,
+                    memory_in_gb=memory_in_gb,
+                    gpu_count=gpu_count,
                     envs=envs,
                     volume_mount_path=mounted_dir,
                     timeout=execution_time_limit,

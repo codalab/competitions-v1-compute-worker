@@ -5,6 +5,7 @@ RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~
 
 # Install entr which is a file watching library
 RUN apt-get install -y entr git
+RUN apt-get install -y emacs
 
 # Move into our worker directory, so we're not in /
 WORKDIR /worker/
