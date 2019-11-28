@@ -10,6 +10,8 @@
       name: cifs-utils
       state: present
       update_cache: yes
+    tags:
+      - packages
 
   - name: Create a directory for workers AFS
     file:
@@ -17,18 +19,24 @@
       state: directory
       mode: '0755'
     with_sequence: count={{ worker_number }}
+    tags:
+      - configuration
 
   - name: Create a directory for AFS creds
     file:
       path: "/etc/smbcredentials"
       state: directory
       mode: '0755'
+    tags:
+      - configuration
 
   - name: Copy credentials
     copy:
       src: configs/afs.cred
       dest: /etc/smbcredentials/afs.cred
       mode: '0600'
+    tags:
+      - configuration
 
   - name: Mount Azure File Share
     mount:
@@ -38,3 +46,5 @@
       fstype: cifs
       state: mounted
     with_sequence: count={{ worker_number }}
+    tags:
+      - mount
