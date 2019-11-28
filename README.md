@@ -15,7 +15,7 @@ Original codalab's workers use local dockers on provisioned machines.
 Deploy
 =======
 
-###Configs
+## Configs
 
 ```
  ───deploy
@@ -108,7 +108,7 @@ IMAGE_REGISTRY_PWD=''
 4. Create directory `deploy/configs` and put these configs there.
 
 
-###Ansible deploy
+### Ansible deploy
 
 1. Set your params in the `deploy/ansible.cfg` and `deploy/hosts.yaml` (username and host).
 
