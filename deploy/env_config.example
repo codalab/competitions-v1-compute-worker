@@ -1,36 +1,33 @@
+# For ACI-container management (cloud-hunky)
 AZURE_AUTH_LOCATION=/root/.azure/azure_creds
 
+# For celery.
 WORKER=celerymain
 WORKER_CONCURRENCY=1
+
+# For local/ACI launch
 ACI_PRED=True
 ACI_SCORE=True
 
-#Logging config
-LOG_CFG=<path/logging.yaml>
+# Logging config
+LOG_CFG=/log/logging.yaml
+
 # This is the URL you get from the Worker Queues Management page on Codalab
-MAIN_BROKER_URL=""
-BROKER_URL=""
-MAIN_BROKER_LOGIN=""
-MAIN_BROKER_PASS=""
+MAIN_BROKER_URL=<main virtual host>
+BROKER_URL=<additional virtual host> (when codalab creates a new queue - it creates a new virtual host)
+
+# Specify when use alternative queues
+MAIN_BROKER_LOGIN=guest
+MAIN_BROKER_PASS=guest
+
+# The temporary directory for submissions to do their work in
+# Don't forget specify this path in docker mount
+SUBMISSION_TEMP_DIR=/tmp/codalab
+
+# Don't create this env
 #BROKER_USE_SSL=True
 
-#params for ACI container
-RAM=16
-CPU=2
-GPU=0
-#params for prediction stage
-PRED_RAM=16
-PRED_CPU=2
-PRED_GPU=1
-#params for score stage
-SCORE_RAM=16
-SCORE_CPU=2
-SCORE_GPU=0
-
-#Docker Registry creds
+# Docker Registry creds (Optional). For ACI's start time reduction
 IMAGE_REGISTRY_SERVER=''
 IMAGE_REGISTRY_USERNAME=''
 IMAGE_REGISTRY_PWD=''
-
-# The temporary directory for submissions to do their work in
-SUBMISSION_TEMP_DIR=/tmp/codalab
