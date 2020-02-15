@@ -1,3 +1,18 @@
+Alternative workers
+===================
+
+### [igormusinov/competitions-v1-compute-worker](https://github.com/igormusinov/competitions-v1-compute-worker)
+
+Uses cool Azure features ([ACI](https://azure.microsoft.com/en-us/services/container-instances/)) to run compute worker docker container in serverless environment:
+
+### [nvidia compute worker](https://github.com/codalab/competitions-v1-compute-worker/tree/162-nvidia-worker)
+
+Adds support for nvidia GPUs 
+
+### [realtime detailed results](https://github.com/codalab/competitions-v1-compute-worker/tree/feature/realtime-detailed-results)
+
+Adds support for real time detailed results
+
 Running
 =======
 
