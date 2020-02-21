@@ -1,8 +1,10 @@
 - hosts: all
   vars:
-    worker_number: 1
     mount_path: /mnt/afs/worker
+  vars_files:
+    - workers_list.yml
   become: true
+#  gather_facts: no
   tasks:
     - name: Install python docker sdk
       pip:
@@ -27,24 +29,27 @@
       loop:
         - azure_creds
         - afs_creds.yml
-        - env_config
+        - stage_env_config
+        - prod_env_config
       tags:
         - configuration
 
+    # TODO: make list for worker (stage/dev/prod) & make env for BROKER_URL
+
     - name: Run docker with codalab-aci-worker
       docker_container:
-        name: "aciworker-{{ item }}"
+        name: "aciworker-{{ item.key }}"
         state: started
         restart: yes
         image: musinov/aci_compute_worker
         volumes:
-          - "{{ mount_path }}{{ item }}:/tmp/codalab"
+          - "{{ mount_path }}{{ item.key }}:/tmp/codalab"
           - /etc/aciworker:/root/.azure
-        env_file: /etc/aciworker/env_config
+        env_file: "/etc/aciworker/{{ item.value }}_env_config"
         env:
-          AFS_SHARE: "worker{{ item }}"
+          AFS_SHARE: "{{ item.key }}"
         network_mode: host
         pull: yes
-      with_sequence: count={{ worker_number }}
+      loop: "{{ lookup('dict', workers, wantlist=True) }}"
       tags:
         - deploy

@@ -1,0 +1,3 @@
+workers:
+  worker1: "stage"
+#  worker2: "prod"
