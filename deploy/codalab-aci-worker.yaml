@@ -4,7 +4,7 @@
   vars_files:
     - workers_list.yml
   become: true
-#  gather_facts: no
+  gather_facts: no
   tasks:
     - name: Install python docker sdk
       pip:
@@ -38,7 +38,7 @@
 
     - name: Run docker with codalab-aci-worker
       docker_container:
-        name: "aciworker-{{ item.key }}"
+        name: "aciworker-{{ item.key }}-{{ item.value }}"
         state: started
         restart: yes
         image: musinov/aci_compute_worker
