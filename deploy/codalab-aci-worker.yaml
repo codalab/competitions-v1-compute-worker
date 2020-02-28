@@ -1,6 +1,6 @@
 - hosts: all
   vars:
-    mount_path: /mnt/afs/worker
+    mount_path: /mnt/afs
   vars_files:
     - workers_list.yml
   become: true
@@ -43,7 +43,7 @@
         restart: yes
         image: musinov/aci_compute_worker
         volumes:
-          - "{{ mount_path }}{{ item.key }}:/tmp/codalab"
+          - "{{ mount_path }}/{{ item.key }}:/tmp/codalab"
           - /etc/aciworker:/root/.azure
         env_file: "/etc/aciworker/{{ item.value }}_env_config"
         env:
