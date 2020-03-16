@@ -22,6 +22,7 @@ afs_creds = get_afs_creds()
 afs_name = afs_creds["AFS_NAME"]
 afs_key = afs_creds["AFS_KEY"]
 afs_share = os.getenv("AFS_SHARE")
+steps = os.getenv("STEPS","/tmp/codalab/steps")
 
 
 def aci_run(worker, task_id, task_args):
@@ -31,6 +32,9 @@ def aci_run(worker, task_id, task_args):
     task_id: The tracking ID for this task.
     task_args: The input arguments for this task:
     """
+    steps_dir=steps+'/'+task_id
+    if not os.path.exists(steps_dir):
+        os.makedirs(steps_dir)
     codalabworker_logger.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
     docker_image = docker_util.docker_image_clean(task_args['docker_image'])
     bundle_url = task_args['bundle_url']
@@ -224,7 +228,7 @@ def aci_run(worker, task_id, task_args):
                     .replace("/", os.path.sep) \
                     .replace("\\", os.path.sep)
 
-                envs = {'PYTHONUNBUFFERED': 1}
+                envs = {'PYTHONUNBUFFERED': 1, 'STEPS' : steps_dir}
                 # TODO: add dynamic resource params
                 prog_cmd = ["/bin/bash", "-c", f"cd {run_dir} && (time {prog_cmd}) |& tee {os.path.join(output_dir, 'output.txt')}"]
                 codalabworker_logger.info("Invoking ACI container with cmd: %s",
