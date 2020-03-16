@@ -283,7 +283,7 @@ def aci_run(worker, task_id, task_args):
                     command=ingestion_prog_cmd,
                     cpu=2.0,
                     memory_in_gb=16,
-                    gpu_count=1,
+                    gpu_count=gpu_count,
                     envs=envs,
                     volume_mount_path=mounted_dir,
                     afs_name=afs_name,
