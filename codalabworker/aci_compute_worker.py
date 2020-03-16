@@ -32,7 +32,7 @@ def aci_run(worker, task_id, task_args):
     task_id: The tracking ID for this task.
     task_args: The input arguments for this task:
     """
-    steps_dir='{}/{}'.format(steps,task_id)
+    steps_dir='{}/{}/'.format(steps,task_id)
     if not os.path.exists(steps_dir):
         os.makedirs(steps_dir)
     codalabworker_logger.info("Entering run task; task_id=%s, task_args=%s", task_id, task_args)
