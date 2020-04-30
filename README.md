@@ -92,3 +92,4 @@ Special env flags
 Sometimes it may be useful to pause the compute worker and return instead of finishing a submission. This leaves the
 submission in a state where it hasn't been cleaned up yet and you can attempt to re-run it manually.
 
+test
