@@ -134,7 +134,14 @@ def get_bundle(cache_dir, root_dir, relative_dir, url):
         # Also make sure cache dir exists
         if not exists(cache_dir):
             os.mkdir(cache_dir)
-        urllib.urlretrieve(url, cached_bundle_file_path)
+        retries = 0 
+        while retries < 3:
+            try:
+                urllib.urlretrieve(url, cached_bundle_file_path)
+                break
+            except:
+                retries += 1
+                logger.info("get_bundle :: failed getting bundle {} time(s)...".format(retries))
 
     # Extracting files or grabbing extras
     bundle_path = join(root_dir, relative_dir)
