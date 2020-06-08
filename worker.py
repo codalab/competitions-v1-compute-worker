@@ -673,7 +673,7 @@ def run(task_id, task_args):
                             ingestion_program_exit_code = ingestion_process.poll()
                 except (ValueError, OSError):
                     pass  # tried to communicate with dead process
-                except ExecutionTimeLimitExceeded:
+                except (ExecutionTimeLimitExceeded, SoftTimeLimitExceeded):
                     logger.info("Killed process for running too long!")
                     stderr.write("Execution time limit exceeded!")
 
