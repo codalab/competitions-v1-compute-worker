@@ -73,9 +73,26 @@ docker push codalab/competitions-v1-nvidia-worker:latest
 Special env flags
 =================
 
+### SUBMISSION_TEMP_DIR
+
+*Default /tmp/codalab*
+
+### SUBMISSION_CACHE_DIR
+
+*Default /tmp/cache*
+
+### CODALAB_HOSTNAME
+
+*Default socket.gethostname()*
 
 ### DONT_FINALIZE_SUBMISSION
 
 Sometimes it may be useful to pause the compute worker and return instead of finishing a submission. This leaves the
 submission in a state where it hasn't been cleaned up yet and you can attempt to re-run it manually.
 
+### SUBMISSION_CACHE_DIR_MAX_SIZE_IN_GB
+
+*Default 10*
+
+Specifies the max cache dir size. At the end of a submission this directory size is checked: if it grows over this 
+amount the cache dir will be cleared.
