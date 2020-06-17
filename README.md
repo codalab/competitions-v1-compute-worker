@@ -87,6 +87,18 @@ Special env flags
 =================
 
 
+### SUBMISSION_TEMP_DIR
+
+*Default /tmp/codalab*
+
+### SUBMISSION_CACHE_DIR
+
+*Default /tmp/cache*
+
+### CODALAB_HOSTNAME
+
+*Default socket.gethostname()*
+
 ### DONT_FINALIZE_SUBMISSION
 
 Sometimes it may be useful to pause the compute worker and return instead of finishing a submission. This leaves the
