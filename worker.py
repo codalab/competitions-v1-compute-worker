@@ -271,8 +271,8 @@ def run(task_id, task_args):
     private_output_url = task_args['private_output_url']
 
     execution_time_limit = task_args['execution_time_limit']
-    max_execution_time_limit = task_args['max_execution_time_limit']
-    previous_execution_time = task_args['previous_execution_time']
+    # max_execution_time_limit = task_args['max_execution_time_limit']
+    # previous_execution_time = task_args['previous_execution_time']
     # container = task_args['container_name']
     is_predict_step = task_args.get("predict", False)
     is_scoring_step = not is_predict_step
@@ -657,7 +657,7 @@ def run(task_id, task_args):
                 signal.signal(signal.SIGALRM, alarm_handler)
 
                 signal.alarm(int(math.fabs(math.ceil(execution_time_limit - time_difference))))
-                signal.alarm(int(math.fabs(math.ceil(max_execution_time_limit - time_difference - previous_execution_time))))  # Total Execution
+                # signal.alarm(int(math.fabs(math.ceil(max_execution_time_limit - time_difference - previous_execution_time))))  # Total Execution
 
                 logger.info("Checking process, exit_code = %s" % exit_code)
 
