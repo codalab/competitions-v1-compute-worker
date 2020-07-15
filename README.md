@@ -90,6 +90,8 @@ Special env flags
 
 *Default False, does not pass `--gpus all` flag*
 
+Note: Also requires docker v19.03 or greater.
+
 ### SUBMISSION_TEMP_DIR
 
 *Default /tmp/codalab*
