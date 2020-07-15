@@ -5,7 +5,7 @@ Alternative workers
 
 Uses cool Azure features ([ACI](https://azure.microsoft.com/en-us/services/container-instances/)) to run compute worker docker container in serverless environment:
 
-### [nvidia compute worker](https://github.com/codalab/competitions-v1-compute-worker/tree/162-nvidia-worker)
+### [(LEGACY nvidia-docker) nvidia compute worker](https://github.com/codalab/competitions-v1-compute-worker/tree/162-nvidia-worker)
 
 Adds support for nvidia GPUs 
 
@@ -86,6 +86,9 @@ docker push codalab/competitions-v1-compute-worker
 Special env flags
 =================
 
+### USE_GPU
+
+*Default False, does not pass `--gpus all` flag*
 
 ### SUBMISSION_TEMP_DIR
 
