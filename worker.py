@@ -260,6 +260,8 @@ def run(task_id, task_args):
     current_dir = os.getcwd()
     temp_dir = os.environ.get('SUBMISSION_TEMP_DIR', '/tmp/codalab')
     root_dir = None
+    
+    use_gpu = os.environ.get('USE_GPU')
 
     do_docker_pull(docker_image, task_id, secret)
 
@@ -488,6 +490,7 @@ def run(task_id, task_args):
                     .replace("\\", os.path.sep)
                 prog_cmd = prog_cmd.split(' ')
                 eval_container_name = uuid.uuid4()
+
                 docker_cmd = [
                     'docker',
                     'run',
@@ -508,10 +511,18 @@ def run(task_id, task_args):
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory
                     '-w', run_dir,
+                    
                     # Note that hidden data dir is excluded here!
                     # Set the right image
+                ]
+                    
+                if use_gpu:
+                    docker_cmd += ['--gpus', 'all']
+                    
+                docker_cmd += [
                     docker_image,
                 ]
+                
                 prog_cmd = docker_cmd + prog_cmd
 
                 logger.info("Invoking program: %s", " ".join(prog_cmd))
@@ -580,9 +591,15 @@ def run(task_id, task_args):
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory to submission dir
                     '-w', run_dir,
-                    # Set the right image
+                ]
+                
+                if use_gpu:
+                    docker_cmd += ['--gpus', 'all']
+                    
+                docker_cmd += [
                     ingestion_program_docker_image,
                 ]
+                
                 ingestion_prog_cmd = ingestion_docker_cmd + ingestion_prog_cmd
 
                 logger.info("Invoking ingestion program: %s", " ".join(ingestion_prog_cmd))
