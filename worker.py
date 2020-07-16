@@ -594,9 +594,9 @@ def run(task_id, task_args):
                 ]
                 
                 if use_gpu:
-                    docker_cmd += ['--gpus', 'all']
+                    ingestion_docker_cmd += ['--gpus', 'all']
                     
-                docker_cmd += [
+                ingestion_docker_cmd += [
                     ingestion_program_docker_image,
                 ]
                 
