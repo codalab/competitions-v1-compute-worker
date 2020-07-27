@@ -511,14 +511,14 @@ def run(task_id, task_args):
                     '-e', 'PYTHONUNBUFFERED=1',
                     # Set current working directory
                     '-w', run_dir,
-                    
+ 
                     # Note that hidden data dir is excluded here!
                     # Set the right image
                 ]
-                    
+ 
                 if use_gpu:
                     docker_cmd += ['--gpus', 'all']
-                    
+
                 docker_cmd += [
                     docker_image,
                 ]
@@ -592,10 +592,10 @@ def run(task_id, task_args):
                     # Set current working directory to submission dir
                     '-w', run_dir,
                 ]
-                
+ 
                 if use_gpu:
                     ingestion_docker_cmd += ['--gpus', 'all']
-                    
+
                 ingestion_docker_cmd += [
                     ingestion_program_docker_image,
                 ]
