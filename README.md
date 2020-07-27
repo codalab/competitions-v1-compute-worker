@@ -92,8 +92,6 @@ $ docker kill compute_worker
 Development
 ===========
 
-### CPU
-
 To re-build the image:
 
 ```
