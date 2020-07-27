@@ -73,7 +73,7 @@ docker run \
     --log-opt max-size=50m \
     --log-opt max-file=3 \
     --gpus all \
-    codalab/competitions-v1-compute-worker-gpu:latest
+    codalab/competitions-v1-compute-worker:latest
 ```
 
 ### To get output of the worker
@@ -97,7 +97,7 @@ Development
 To re-build the image:
 
 ```
-docker build -f Dockerfile -t competitions-v1-compute-worker .
+docker build -t competitions-v1-compute-worker .
 ```
 
 Updating the image
@@ -107,20 +107,6 @@ docker build -t codalab/competitions-v1-compute-worker:latest .
 docker push codalab/competitions-v1-compute-worker
 ```
 
-### GPU
-
-To re-build the image:
-
-```
-docker build -f gpu.Dockerfile -t competitions-v1-compute-worker .
-```
-
-Updating the image
-
-```
-docker build -f gpu.Dockerfile -t codalab/competitions-v1-compute-worker-gpu:latest .
-docker push codalab/competitions-v1-compute-worker-gpu
-```
 
 Special env flags
 =================
