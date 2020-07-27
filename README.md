@@ -53,6 +53,29 @@ docker run \
     codalab/competitions-v1-compute-worker:latest
 ```
 
+### If you want to run with GPU:
+
+Make sure that you have [nvidia-container-toolkit](https://github.com/NVIDIA/nvidia-docker#quickstart)
+set up -- this also involves updating to Docker 19.03 and installing NVIDIA drivers.
+
+Edit `.env_sample` and save it as `.env`. Make sure to uncomment `USE_GPU=True`.
+
+Then make sure the temp directory you select is created and pass it in this command
+
+```
+docker run \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /tmp/codalab:/tmp/codalab \
+    -d \
+    --name compute_worker \
+    --env-file .env \
+    --restart unless-stopped \
+    --log-opt max-size=50m \
+    --log-opt max-file=3 \
+    --gpus all \
+    codalab/competitions-v1-compute-worker:latest
+```
+
 ### To get output of the worker
 
 ```
@@ -90,7 +113,7 @@ Special env flags
 
 *Default False, does not pass `--gpus all` flag*
 
-Note: Also requires docker v19.03 or greater.
+Note: Also requires Docker v19.03 or greater, nvidia-container-toolkit, and NVIDIA drivers.
 
 ### SUBMISSION_TEMP_DIR
 
