@@ -36,17 +36,17 @@ RUN apt-get update && apt-get install -y nvidia-container-toolkit
 RUN apt-get install -y entr
 
 #####
-# Install python 2.7 and pip
+# Install python 3.8 and pip3
 #####
 
-RUN apt-get install -y python2.7 python-pip
+RUN apt-get install -y python3.8 python3-pip
 
 # Move into our worker directory, so we're not in /
 WORKDIR /worker/
  
 # Install Python stuff we need to listen to the queue
 COPY requirements.txt /worker/requirements.txt
-RUN pip install -r requirements.txt
+RUN pip3 install -r requirements.txt
  
 # Copy our actual code
 COPY *.py /worker/

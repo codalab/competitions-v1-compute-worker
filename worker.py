@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import sys
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 import json
 import logging.config
@@ -124,7 +124,7 @@ def get_bundle(root_dir, relative_dir, url):
     retries = 0
     while retries < 3:
         try:
-            urllib.urlretrieve(url, bundle_file.name)
+            urllib.request.urlretrieve(url, bundle_file.name)
             break
         except:
             retries += 1
@@ -168,10 +168,10 @@ def get_bundle(root_dir, relative_dir, url):
     if os.path.exists(metadata_path):
         logger.info("get_bundle :: Fetching extra files specified in metadata for {}".format(metadata_path))
         with open(metadata_path) as mf:
-            metadata = yaml.load(mf)
+            metadata = yaml.full_load(mf)
 
     if isinstance(metadata, dict):
-        for (k, v) in metadata.items():
+        for (k, v) in list(metadata.items()):
             if k not in ("description", "command", "exitCode", "elapsedTime", "stdout", "stderr", "submitted-by", "submitted-at"):
                 if isinstance(v, str):
                     logger.debug("get_bundle :: Fetching recursive bundle %s %s %s" % (bundle_path, k, v))
