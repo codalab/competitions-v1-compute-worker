@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys
 import hashlib
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 import json
 import logging.config
@@ -128,7 +128,7 @@ def get_bundle(cache_dir, root_dir, relative_dir, url):
 
     logger.debug("get_bundle :: Getting %s from %s" % (file_name, url))
 
-    url_hash = hashlib.sha256(url_without_params).hexdigest()
+    url_hash = hashlib.sha256(url_without_params.encode()).hexdigest()
     cached_bundle_file_path = join(cache_dir, url_hash)
     if not os.path.exists(cached_bundle_file_path):
         # Also make sure cache dir exists
@@ -137,7 +137,7 @@ def get_bundle(cache_dir, root_dir, relative_dir, url):
         retries = 0 
         while retries < 3:
             try:
-                urllib.urlretrieve(url, cached_bundle_file_path)
+                urllib.request.urlretrieve(url, cached_bundle_file_path)
                 break
             except:
                 retries += 1
@@ -185,7 +185,7 @@ def get_bundle(cache_dir, root_dir, relative_dir, url):
             metadata = yaml.load(mf)
 
     if isinstance(metadata, dict):
-        for (k, v) in metadata.items():
+        for (k, v) in list(metadata.items()):
             if k not in ("description", "command", "exitCode", "elapsedTime", "stdout", "stderr", "submitted-by", "submitted-at"):
                 if isinstance(v, str):
                     logger.debug("get_bundle :: Fetching recursive bundle %s %s %s" % (bundle_path, k, v))

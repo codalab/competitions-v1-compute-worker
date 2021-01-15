@@ -1,3 +1,4 @@
+#FROM ubuntu:16.04
 FROM ubuntu:16.04
 
 RUN apt-get update
@@ -22,10 +23,17 @@ RUN apt-get install entr -y
 WORKDIR /worker/
 
 # Install Python stuff we need to listen to the queue
-RUN apt-get install python-pip -y
-RUN pip install -U pip
+#RUN apt-get install python-pip -y
+#RUN pip install -U pip
+
+RUN apt-get install -y software-properties-common
+
+RUN add-apt-repository ppa:deadsnakes/ppa && apt-get update && apt-get install -y python3.8-dev python3-pip
+
+# RUN apt-get install -y python3.8-dev python3-pip
+
 COPY requirements.txt /worker/requirements.txt
-RUN pip install -r requirements.txt
+RUN apt install -y python3.8-distutils && apt remove -y python3-pip && python3.8 -m easy_install pip && python3.8 -m pip install -r requirements.txt
 
 # Copy our actual code
 COPY *.py /worker/
