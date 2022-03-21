@@ -16,44 +16,31 @@ Adds support for real time detailed results
 Running
 =======
 
-### If you want to run everything in one line:
-
-*Note: this will make a `/tmp/codalab` directory*
+Edit `.env_sample` and save it as `.env`:
 
 ```
-mkdir -p /tmp/codalab && docker run \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /tmp/codalab:/tmp/codalab \
-    -d \
-    --name compute_worker \
-    --env BROKER_URL=<queue broker url> \
-    --restart unless-stopped \
-    --log-opt max-size=50m \
-    --log-opt max-file=3 \
-    codalab/competitions-v1-compute-worker:latest
+BROKER_URL=<Your queue's broker URL>
+BROKER_USE_SSL=True in .env.
 ```
 
+Run the following command:
 
-### If you want to run using `.env` configuration:
-
-Edit `.env_sample` and save it as `.env`
-
-Make sure the temp directory you select is created and pass it in this command
-
-```
+```sh
 docker run \
+    --env-file .env \
+    --name compute_worker \
+    -d \
+    --restart unless-stopped \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /tmp/codalab:/tmp/codalab \
-    -d \
-    --name compute_worker \
-    --env-file .env \
-    --restart unless-stopped \
-    --log-opt max-size=50m \
-    --log-opt max-file=3 \
-    codalab/competitions-v1-compute-worker:latest
+    codalab/competitions-v1-compute-worker:1.1.5
 ```
+
+For more details: [codalab/codalab-competitions/wiki/Using-your-own-compute-workers](https://github.com/codalab/codalab-competitions/wiki/User_Using-your-own-compute-workers).
 
 ### If you want to run with GPU:
+
+Install `cuda`, `nvidia`, `docker` and `nvidia-docker` (system dependent)
 
 Make sure that you have [nvidia-container-toolkit](https://github.com/NVIDIA/nvidia-docker#quickstart)
 set up -- this also involves updating to Docker 19.03 and installing NVIDIA drivers.
@@ -62,9 +49,12 @@ Edit `.env_sample` and save it as `.env`. Make sure to uncomment `USE_GPU=True`.
 
 Then make sure the temp directory you select is created and pass it in this command
 
-```
-docker run \
+Run the following command:
+
+```sh
+sudo mkdir -p /tmp/codalab && nvidia-docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /var/lib/nvidia-docker/nvidia-docker.sock:/var/lib/nvidia-docker/nvidia-docker.sock \
     -v /tmp/codalab:/tmp/codalab \
     -d \
     --name compute_worker \
@@ -72,9 +62,10 @@ docker run \
     --restart unless-stopped \
     --log-opt max-size=50m \
     --log-opt max-file=3 \
-    --gpus all \
-    codalab/competitions-v1-compute-worker:latest
+    codalab/competitions-v1-nvidia-worker:v1.5-compat
 ```
+
+
 
 ### To get output of the worker
 
