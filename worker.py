@@ -249,6 +249,17 @@ def run_wrapper(task_id, task_args):
     except SoftTimeLimitExceeded:
         _send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
+def zip_archive(src, dst):
+    """ Zip files using ZipFile with Zip64 mode.
+        src : 'folder_to_zip'
+        dst : 'results.zip'
+    """
+    with ZipFile(dst, "w", ZIP_DEFLATED, allowZip64=True) as zf:
+                for root, _, filenames in os.walk(os.path.basename(src)):
+                    for name in filenames:
+                        absname = os.path.join(root, name)
+                        arcname = os.path.relpath(absname, src)
+                        zf.write(absname, arcname)
 
 def run(task_id, task_args):
     """
@@ -765,14 +776,15 @@ def run(task_id, task_args):
         if os.path.exists(private_dir):
             logger.info("Packing private results...")
             private_output_file = join(root_dir, 'run', 'private_output.zip')
-            shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip', output_dir)
+            zip_archive(output_dir, private_output_file)
             put_blob(private_output_url, private_output_file)
             shutil.rmtree(private_dir, ignore_errors=True)
 
         # Pack results and send them to Blob storage
         logger.info("Packing results...")
         output_file = join(root_dir, 'run', 'output.zip')
-        shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
+        zip_archive(output_dir, output_file)
+        
         put_blob(output_url, output_file)
 
         if detailed_results_url:
