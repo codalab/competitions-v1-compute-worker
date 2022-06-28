@@ -93,20 +93,21 @@ def do_docker_pull(image_name, task_id, secret):
         })
 
 
-# def docker_get_size():
-#     return os.popen("docker system df | awk -v x=4 'FNR == 2 {print $x}'").read().strip()
-#
-#
-# def docker_prune():
-#     """Runs a prune on docker if our images take up more than what's defined in settings."""
-#     # May also use docker system df --format "{{.Size}}"
-#     image_size = docker_get_size()
-#     image_size_measurement = image_size[-2:]
-#     image_size = float(image_size[:-2])
-#
-#     if image_size > settings.DOCKER_MAX_SIZE_GB and image_size_measurement == "GB":
-#         logger.info("Pruning")
-#         os.system("docker system prune --force")
+def docker_get_size():
+    # Below would need split
+    # return os.popen('docker system df --format "{{.Size}}"').read().strip()
+    return os.popen("docker system df | awk -v x=4 'FNR == 2 {print $x}'").read().strip()
+
+
+def docker_prune():
+    """Runs a prune on docker if our images take up more than what's defined in settings."""
+    image_size = docker_get_size()
+    image_size_measurement = image_size[-2:].lower()
+    image_size = float(image_size[:-2])
+
+    if image_size > os.environ.get('DOCKER_MAX_SIZE_GB', 10) and image_size_measurement == "gb":
+        logger.info("Pruning")
+        os.system("docker system prune --force")
 
 
 def get_bundle(root_dir, relative_dir, url):
@@ -292,7 +293,11 @@ def run(task_id, task_args):
         "end_cpu_usage": None,
     }
 
-    # docker_prune()
+    try:
+        docker_prune()
+    # Not sure how we should handle this?
+    except OSError:
+        logger.info("Could not perform docker prune! An error occurred")
 
     try:
         # Cleanup dir in case any processes didn't clean up properly
