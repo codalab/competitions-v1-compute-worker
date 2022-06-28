@@ -344,6 +344,7 @@ def run(task_id, task_args):
         run_dir = join(root_dir, 'run')
         shared_dir = tempfile.mkdtemp(dir=temp_dir)
         hidden_ref_dir = ''
+        data_dir = '/data'
 
         # Fetch and stage the bundles
         logger.info("Fetching bundles...")
@@ -553,6 +554,7 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
+                    '-v', '{0}:/data:ro'.format(data_dir),
                     # Set aside 512m memory for the host
                     '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Don't buffer python output, so we don't lose any
@@ -631,6 +633,7 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
+                    '-v', '{0}:/data:ro'.format(data_dir),
                     # Set aside 512m memory for the host
                     '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Add the participants submission dir to PYTHONPATH
