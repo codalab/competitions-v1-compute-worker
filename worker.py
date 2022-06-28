@@ -24,7 +24,7 @@ import yaml
 from os.path import join, exists
 from glob import glob
 from subprocess import Popen, call, check_output, CalledProcessError, PIPE
-from zipfile import ZipFile, BadZipfile
+from zipfile import ZipFile, BadZipfile, ZIP_DEFLATED
 
 from billiard import SoftTimeLimitExceeded
 from celery import Celery, task
