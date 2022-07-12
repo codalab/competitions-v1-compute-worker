@@ -24,7 +24,7 @@ import yaml
 from os.path import join, exists
 from glob import glob
 from subprocess import Popen, call, check_output, CalledProcessError, PIPE
-from zipfile import ZipFile, BadZipfile
+from zipfile import ZipFile, BadZipfile, ZIP_DEFLATED
 
 from billiard import SoftTimeLimitExceeded
 from celery import Celery, task
@@ -249,6 +249,17 @@ def run_wrapper(task_id, task_args):
     except SoftTimeLimitExceeded:
         _send_update(task_id, {'status': 'failed'}, task_args['secret'])
 
+def zip_archive(src, dst):
+    """ Zip files using ZipFile with Zip64 mode.
+        src : 'folder_to_zip'
+        dst : 'results.zip'
+    """
+    with ZipFile(dst, "w", ZIP_DEFLATED, allowZip64=True) as zf:
+                for root, _, filenames in os.walk(os.path.basename(src)):
+                    for name in filenames:
+                        absname = os.path.join(root, name)
+                        arcname = os.path.relpath(absname, src)
+                        zf.write(absname, arcname)
 
 def run(task_id, task_args):
     """
@@ -333,6 +344,7 @@ def run(task_id, task_args):
         run_dir = join(root_dir, 'run')
         shared_dir = tempfile.mkdtemp(dir=temp_dir)
         hidden_ref_dir = ''
+        data_dir = '/data'
 
         # Fetch and stage the bundles
         logger.info("Fetching bundles...")
@@ -542,6 +554,7 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
+                    '-v', '{0}:/data:ro'.format(data_dir),
                     # Set aside 512m memory for the host
                     '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Don't buffer python output, so we don't lose any
@@ -620,6 +633,7 @@ def run(task_id, task_args):
                     # Set the right volume
                     '-v', '{0}:{0}'.format(run_dir),
                     '-v', '{0}:{0}'.format(shared_dir),
+                    '-v', '{0}:/data:ro'.format(data_dir),
                     # Set aside 512m memory for the host
                     '--memory', '{}MB'.format(available_memory_mib - 512),
                     # Add the participants submission dir to PYTHONPATH
@@ -765,14 +779,15 @@ def run(task_id, task_args):
         if os.path.exists(private_dir):
             logger.info("Packing private results...")
             private_output_file = join(root_dir, 'run', 'private_output.zip')
-            shutil.make_archive(os.path.splitext(private_output_file)[0], 'zip', output_dir)
+            zip_archive(output_dir, private_output_file)
             put_blob(private_output_url, private_output_file)
             shutil.rmtree(private_dir, ignore_errors=True)
 
         # Pack results and send them to Blob storage
         logger.info("Packing results...")
         output_file = join(root_dir, 'run', 'output.zip')
-        shutil.make_archive(os.path.splitext(output_file)[0], 'zip', output_dir)
+        zip_archive(output_dir, output_file)
+        
         put_blob(output_url, output_file)
 
         if detailed_results_url:

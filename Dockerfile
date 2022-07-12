@@ -1,10 +1,10 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 RUN apt-get update
 RUN apt-get install curl wget -y
 
 # Install a specific version of docker
-RUN curl -sSL https://get.docker.com/ | sed 's/docker-ce/docker-ce=18.03.0~ce-0~ubuntu/' | sh
+RUN curl -sSL https://get.docker.com/ | sh
 
 # nvidia-docker jazz
 RUN curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | \
