@@ -126,8 +126,11 @@ def get_bundle(root_dir, relative_dir, url):
         try:
             urllib.urlretrieve(url, bundle_file.name)
             break
-        except:
+        except Exception as e:
             retries += 1
+            # try and fail 3 times, can be network error
+            if retries >= 3:
+                raise e
 
     # Extracting files or grabbing extras
     bundle_path = join(root_dir, relative_dir)
