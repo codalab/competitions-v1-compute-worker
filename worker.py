@@ -126,7 +126,8 @@ def get_bundle(root_dir, relative_dir, url):
         try:
             urllib.urlretrieve(url, bundle_file.name)
             break
-        except:
+        except Exception as e:
+            logger.error(f"urlretrieve failed on attempt {retries+1} for {url}: {e}")
             retries += 1
 
     # Extracting files or grabbing extras
